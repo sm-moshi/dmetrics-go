@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Real-time CPU statistics monitoring
   - Per-core usage visualization with Unicode bar graphs
   - Clean shutdown handling and proper resource cleanup
+- Power metrics module for Darwin systems
+  - Battery status monitoring (percentage, state, health)
+  - Power source detection (AC vs Battery)
+  - System power consumption metrics (CPU, GPU, total)
+  - Real-time monitoring with configurable intervals
+- Comprehensive test suite including:
+  - Unit tests
+  - Integration tests
+  - Benchmarks
+  - Concurrent access testing
+- Example code for power metrics usage
 
 ### Changed
 

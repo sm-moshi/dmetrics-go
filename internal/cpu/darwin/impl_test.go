@@ -17,7 +17,10 @@ import (
 // Create a package-level random source.
 //
 //nolint:gosec // G404: acceptable use of weak RNG for test timing variations
-var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+var (
+	rngMu sync.Mutex
+	rng   = rand.New(rand.NewSource(time.Now().UnixNano()))
+)
 
 func TestGetStats(t *testing.T) {
 	stats, err := getStats()
@@ -117,7 +120,10 @@ func TestGetStatsConcurrent(t *testing.T) {
 				}
 
 				// Use the package-level RNG with mutex protection
-				time.Sleep(time.Duration(10+rng.Intn(40)) * time.Millisecond)
+				rngMu.Lock()
+				sleepTime := time.Duration(10+rng.Intn(40)) * time.Millisecond
+				rngMu.Unlock()
+				time.Sleep(sleepTime)
 			}
 			errChan <- nil
 		}(i)
