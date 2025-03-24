@@ -2,10 +2,10 @@ name: "CodeQL"
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
     # The branches below must be a subset of the branches above
-    branches: [ main ]
+    branches: [ main, develop ]
   schedule:
     - cron: '11 0 * * 5'
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
 
     - uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
       with:
-        go-version: '1.24'
+        go-version: '1.24.1'
         check-latest: true
 
     # Initializes the CodeQL tools for scanning.
