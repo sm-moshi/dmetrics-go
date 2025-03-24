@@ -18,7 +18,7 @@ func TestNewProvider(t *testing.T) {
 	provider := cpu.NewProvider()
 	require.NotNil(t, provider, "provider should not be nil")
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	t.Run("GetFrequency", func(t *testing.T) {
 		freq, err := provider.GetFrequency(ctx)
@@ -64,7 +64,7 @@ func TestNewProvider(t *testing.T) {
 	})
 
 	t.Run("Watch", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 		defer cancel()
 
 		ch, err := provider.Watch(ctx, 100*time.Millisecond)

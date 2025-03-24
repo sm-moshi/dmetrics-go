@@ -15,10 +15,10 @@
     "go.useLanguageServer": true,
     "gopls": {
         "formatting.local": "github.com/sm-moshi/dmetrics-go",
-        "formatting.gofumpt": true
+        "formatting.gofumpt": true,
+        "buildFlags": ["-tags=darwin,integration"]
     },
-    // golangci-lint  
-    "go.lintTool": "golangci-lint",
+    // golangci-lint
     "go.lintFlags": [
         "--fast"
     ],
@@ -27,13 +27,19 @@
             "source.organizeImports": "explicit"
         }
     },
-    "debug.javascript.defaultRuntimeExecutable": {
-        "pwa-node": "${workspaceFolder}/.vscode/mise-tools/node"
-    },
     "go.goroot": "${workspaceFolder}/.vscode/mise-tools/goRoot",
-    "python.defaultInterpreterPath": "${workspaceFolder}/.vscode/mise-tools/python",
     "go.alternateTools": {
         "go": "${workspaceFolder}/.vscode/mise-tools/go",
         "dlv": "${workspaceFolder}/.vscode/mise-tools/dlv"
+    },
+    "go.toolsEnvVars": {
+        "GOROOT": "/Users/smeya/.local/share/mise/installs/go/1.24.1"
+    },
+    "debug.javascript.defaultRuntimeExecutable": {
+        "pwa-node": "${workspaceFolder}/.vscode/mise-tools/node"
+    },
+    "python.defaultInterpreterPath": "${workspaceFolder}/.vscode/mise-tools/python",
+    "yaml.schemas": {
+        "https://golangci-lint.run/jsonschema/golangci.jsonschema.json": "file:///Users/smeya/git/dmetrics-go/.golangci.yml"
     }
 }

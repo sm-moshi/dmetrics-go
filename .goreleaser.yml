@@ -11,6 +11,7 @@ builds:
   - linux
   - windows
   goarch:
+  - arm64
   - amd64
 archives:
 - format_overrides:
@@ -32,9 +33,7 @@ dockers:
   - "--label=org.opencontainers.image.source={{.GitURL}}"
 release:
   github:
-    owner: "{{ .ProjectName }}"
+    owner: "sm-moshi"
     name: "{{.Version}}"
-    prerelease: auto
-    mode: append
 changelog:
   disable: true
