@@ -1,7 +1,7 @@
 //go:build darwin
 // +build darwin
 
-package cpu
+package darwin
 
 import (
 	"fmt"
@@ -19,8 +19,8 @@ import (
 //nolint:gosec // G404: acceptable use of weak RNG for test timing variations
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
-func TestGet(t *testing.T) {
-	stats, err := Get()
+func TestGetStats(t *testing.T) {
+	stats, err := getStats()
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 
@@ -64,7 +64,7 @@ func TestGet(t *testing.T) {
 }
 
 func TestUsage(t *testing.T) {
-	usage, err := Usage()
+	usage, err := usage()
 	require.NoError(t, err)
 	t.Logf("\nCurrent CPU Usage: %.2f%%", usage)
 	assert.GreaterOrEqual(t, usage, 0.0, "usage should be > 0%")
@@ -72,14 +72,14 @@ func TestUsage(t *testing.T) {
 }
 
 func TestFrequency(t *testing.T) {
-	freq, err := Frequency()
+	freq, err := getFrequency()
 	require.NoError(t, err)
 	t.Logf("\nCurrent CPU Frequency: %d MHz", freq)
 	assert.Greater(t, freq, uint64(0), "frequency should be > 0 MHz")
 }
 
 func TestLoadAverage(t *testing.T) {
-	loads, err := LoadAverage()
+	loads, err := getLoadAvg()
 	require.NoError(t, err)
 	t.Logf("\nLoad Averages (1, 5, 15 min): %.2f, %.2f, %.2f",
 		loads[0], loads[1], loads[2])
@@ -93,7 +93,7 @@ func TestLoadAverage(t *testing.T) {
 	assert.NotEqual(t, 0.0, loads[0], "1-minute load average should be available")
 }
 
-func TestGetConcurrent(t *testing.T) {
+func TestGetStatsConcurrent(t *testing.T) {
 	const numGoroutines = 5
 	const numIterations = 3
 
@@ -105,7 +105,7 @@ func TestGetConcurrent(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < numIterations; j++ {
-				stats, err := Get()
+				stats, err := getStats()
 				if err != nil {
 					t.Logf("Goroutine %d, iteration %d failed: %v", id, j, err)
 					errChan <- err

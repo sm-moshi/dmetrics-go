@@ -1,4 +1,4 @@
-package internal
+package darwin
 
 /*
 #cgo CFLAGS: -x objective-c -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include
@@ -70,7 +70,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sm-moshi/dmetrics-go/cpu/types"
+	"github.com/sm-moshi/dmetrics-go/pkg/metrics/types"
 )
 
 const (
@@ -84,8 +84,8 @@ var platformInfo struct {
 	err      error
 }
 
-// GetStats returns current CPU statistics.
-func GetStats() (*types.Stats, error) {
+// getStats returns current CPU statistics.
+func getStats() (*types.CPUStats, error) {
 	numCPUs := int(C.get_cpu_count())
 	cStats := make([]C.cpu_stats_t, numCPUs)
 
@@ -130,7 +130,7 @@ func GetStats() (*types.Stats, error) {
 		return nil, cpuError(err)
 	}
 
-	return &types.Stats{
+	return &types.CPUStats{
 		User:             float64(cStats[0].user),
 		System:           float64(cStats[0].system),
 		Idle:             float64(cStats[0].idle),
@@ -148,8 +148,8 @@ func GetStats() (*types.Stats, error) {
 	}, nil
 }
 
-// GetFrequency returns the current CPU frequency in MHz.
-func GetFrequency() (uint64, error) {
+// getFrequency returns the current CPU frequency in MHz.
+func getFrequency() (uint64, error) {
 	// Try performance cores first
 	if freq := C.get_perf_core_freq(); freq > 0 {
 		return uint64(freq), nil
@@ -168,28 +168,9 @@ func GetFrequency() (uint64, error) {
 	return uint64(freq), nil
 }
 
-// IsAppleSilicon returns true if running on Apple Silicon.
-func IsAppleSilicon() (bool, error) {
-	// Initialise platform info if not already done
-	platformInfo.Once.Do(func() {
-		var platform C.go_cpu_platform_t
-		if ret := C.go_get_cpu_platform(&platform); ret != 0 {
-			platformInfo.err = fmt.Errorf("failed to get CPU platform info: %d", ret)
-			return
-		}
-		platformInfo.platform = platform
-	})
-
-	if platformInfo.err != nil {
-		return false, platformInfo.err
-	}
-
-	return platformInfo.platform.is_apple_silicon != 0, nil
-}
-
-// Usage returns current CPU usage as a percentage.
-func Usage() (float64, error) {
-	stats, err := GetStats()
+// usage returns current CPU usage as a percentage.
+func usage() (float64, error) {
+	stats, err := getStats()
 	if err != nil {
 		return 0, err
 	}
@@ -197,8 +178,8 @@ func Usage() (float64, error) {
 	return stats.TotalUsage, nil
 }
 
-// GetLoadAvg returns the system load averages for the past 1, 5, and 15 minutes.
-func GetLoadAvg() ([3]float64, error) {
+// getLoadAvg returns the system load averages for the past 1, 5, and 15 minutes.
+func getLoadAvg() ([3]float64, error) {
 	var loadAvg [3]C.double
 	ret := C.get_load_avg(&loadAvg[0])
 	if ret != 0 {
@@ -212,14 +193,14 @@ func GetLoadAvg() ([3]float64, error) {
 	}, nil
 }
 
-// Cleanup releases any resources used by the CPU stats collector.
-func Cleanup() {
+// cleanup releases any resources used by the CPU stats collector.
+func cleanup() {
 	C.go_cleanup_cpu_stats()
 }
 
 func init() {
 	runtime.SetFinalizer(new(bool), func(_ *bool) {
-		C.go_cleanup_cpu_stats()
+		cleanup()
 	})
 }
 

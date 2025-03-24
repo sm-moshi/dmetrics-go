@@ -15,13 +15,16 @@ Example usage:
 	package main
 
 	import (
+	    "context"
 	    "fmt"
 	    "log"
-	    "github.com/sm-moshi/dmetrics-go/cpu"
+	    "github.com/sm-moshi/dmetrics-go/internal/cpu"
+	    "github.com/sm-moshi/dmetrics-go/pkg/metrics/types"
 	)
 
 	func main() {
-	    stats, err := cpu.Get()
+	    provider := cpu.NewProvider()
+	    stats, err := provider.GetStats(context.Background())
 	    if err != nil {
 	        log.Fatal(err)
 	    }
@@ -38,13 +41,15 @@ The library uses cgo to interface with macOS system calls and frameworks:
 All packages are designed to be thread-safe and efficient, with proper resource cleanup
 and error handling. The library supports both Intel and Apple Silicon Macs.
 
-For detailed documentation of each subsystem, see the respective packages:
-  - cpu: CPU metrics and processor information
-  - gpu: GPU statistics and VRAM usage
-  - memory: Physical and virtual memory metrics
-  - power: Battery status and power source info
-  - temp: Temperature sensors and fan speeds
-  - process: Process statistics and monitoring
-  - network: Network interface metrics
+Package Structure:
+  - api/metrics: Public interfaces for metrics collection
+  - internal/cpu: Platform-specific CPU metrics implementation
+  - internal/gpu: Platform-specific GPU metrics implementation
+  - internal/power: Platform-specific power metrics implementation
+  - internal/temperature: Platform-specific temperature metrics implementation
+  - internal/memory: Platform-specific memory metrics implementation
+  - internal/network: Platform-specific network metrics implementation
+  - internal/process: Platform-specific process metrics implementation
+  - pkg/metrics/types: Common type definitions for all metrics
 */
 package dmetrics
