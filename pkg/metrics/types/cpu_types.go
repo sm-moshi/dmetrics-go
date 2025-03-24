@@ -1,10 +1,10 @@
-// Package types provides type definitions for CPU statistics
+// Package types provides type definitions for CPU metrics collection.
 package types
 
 import "time"
 
-// Stats represents CPU statistics.
-type Stats struct {
+// CPUStats represents detailed CPU statistics.
+type CPUStats struct {
 	User             float64    // User CPU time percentage
 	System           float64    // System CPU time percentage
 	Idle             float64    // Idle CPU time percentage
@@ -21,8 +21,8 @@ type Stats struct {
 	Timestamp        time.Time  // Time when the stats were collected
 }
 
-// Platform represents CPU platform information.
-type Platform struct {
+// CPUPlatform represents CPU platform information.
+type CPUPlatform struct {
 	IsAppleSilicon bool   // Whether this is an Apple Silicon Mac
 	BrandString    string // CPU brand string
 	FrequencyMHz   uint64 // Base/Max CPU frequency in MHz

@@ -38,28 +38,33 @@ go get github.com/sm-moshi/dmetrics-go
 package main
 
 import (
+    "context"
     "fmt"
-    "github.com/sm-moshi/dmetrics-go/cpu"
+    "github.com/sm-moshi/dmetrics-go/internal/cpu"
 )
 
 func main() {
-    usage, err := cpu.Usage()
+    provider := cpu.NewProvider()
+    stats, err := provider.GetStats(context.Background())
     if err != nil {
         panic(err)
     }
-    fmt.Printf("CPU Usage: %.2f%%\n", usage)
+    fmt.Printf("CPU Usage: %.2f%%\n", stats.TotalUsage)
+    fmt.Printf("Frequency: %d MHz\n", stats.FrequencyMHz)
 }
 ```
 
-## 🧱 Modules
+## 🧱 Package Structure
 
-- `cpu` – usage, frequency
-- `gpu` – memory, vendor
-- `power` – battery, charging, AC
-- `temperature` – sensors, fan speed
-- `memory` – used, free, swap
-- `network` – interfaces, throughput
-- `process` – PID info, CPU time
+- `api/metrics` - Public interfaces for metrics collection
+- `internal/cpu` - Platform-specific CPU metrics implementation
+- `internal/gpu` - Platform-specific GPU metrics implementation
+- `internal/power` - Platform-specific power metrics implementation
+- `internal/temperature` - Platform-specific temperature metrics implementation
+- `internal/memory` - Platform-specific memory metrics implementation
+- `internal/network` - Platform-specific network metrics implementation
+- `internal/process` - Platform-specific process metrics implementation
+- `pkg/metrics/types` - Common type definitions for all metrics
 
 ## Development
 

@@ -7,14 +7,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sm-moshi/dmetrics-go/cpu"
+	"github.com/sm-moshi/dmetrics-go/internal/cpu"
 )
 
 const cpuUsageBarScale = 5 // Each bar character represents 5% CPU usage
 
 func printStats() error {
-	// Get all CPU statistics
-	stats, err := cpu.Get()
+	provider := cpu.NewProvider()
+	stats, err := provider.GetStats(nil) // Using nil context for simplicity in example
 	if err != nil {
 		return fmt.Errorf("failed to get CPU stats: %w", err)
 	}
