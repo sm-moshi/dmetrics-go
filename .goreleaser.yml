@@ -1,0 +1,40 @@
+version: 2
+
+before:
+  hooks:
+  - go mod download
+builds:
+- env:
+  - CGO_ENABLED=0
+  goos:
+  - darwin
+  - linux
+  - windows
+  goarch:
+  - amd64
+archives:
+- format_overrides:
+  - goos: windows
+    format: zip
+dockers:
+- image_templates:
+  - "ghcr.io/sm-moshi/dmetrics-go:latest"
+  - "ghcr.io/sm-moshi/dmetrics-go:{{ .Major }}"
+  - "ghcr.io/sm-moshi/dmetrics-go:{{ .Major }}.{{ .Minor }}"
+  - "ghcr.io/sm-moshi/dmetrics-go:{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
+  build_flag_templates:
+  - "--pull"
+  # OCI annotations: https://github.com/opencontainers/image-spec/blob/main/annotations.md
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.name={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+  - "--label=org.opencontainers.image.source={{.GitURL}}"
+release:
+  github:
+    owner: "{{ .ProjectName }}"
+    name: "{{.Version}}"
+    prerelease: auto
+    mode: append
+changelog:
+  disable: true
