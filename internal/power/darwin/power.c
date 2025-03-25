@@ -107,20 +107,32 @@ bool get_power_source_info(power_stats_t *stats) {
 
     if (powerSource) {
       // Check if it's an internal battery
-      CFStringRef type = CFDictionaryGetValue(powerSource, CFSTR("Type"));
-      if (type && CFEqual(type, CFSTR("InternalBattery"))) {
+      CFStringRef type = CFDictionaryGetValue(powerSource, CFSTR(kIOPSTypeKey));
+      if (type && CFEqual(type, CFSTR(kIOPSInternalBatteryType))) {
         stats->is_present = true;
 
-        // Get charging state
+        // Get power source state and charging state
         CFStringRef powerState =
-            CFDictionaryGetValue(powerSource, CFSTR("Power State"));
+            CFDictionaryGetValue(powerSource, CFSTR(kIOPSPowerSourceStateKey));
+        CFBooleanRef isCharging =
+            CFDictionaryGetValue(powerSource, CFSTR(kIOPSIsChargingKey));
+        CFBooleanRef isFinishCharging =
+            CFDictionaryGetValue(powerSource, CFSTR(kIOPSIsChargedKey));
+
         if (powerState) {
-          stats->is_charging = CFEqual(powerState, CFSTR("Charging"));
+          // Check if we're on AC power and either charging or fully charged
+          bool onAC = CFEqual(powerState, CFSTR(kIOPSACPowerValue));
+          bool charging = (isCharging == kCFBooleanTrue);
+          bool fullyCharged = (isFinishCharging == kCFBooleanTrue);
+
+          // Update charging state - we're charging if on AC and either actively
+          // charging or fully charged
+          stats->is_charging = onAC && (charging || fullyCharged);
         }
 
         // Get current capacity percentage
         CFNumberRef currentCapacity =
-            CFDictionaryGetValue(powerSource, CFSTR("Current Capacity"));
+            CFDictionaryGetValue(powerSource, CFSTR(kIOPSCurrentCapacityKey));
         if (currentCapacity) {
           int value;
           if (CFNumberGetValue(currentCapacity, kCFNumberIntType, &value)) {

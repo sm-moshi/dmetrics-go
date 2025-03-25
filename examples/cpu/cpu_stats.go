@@ -27,21 +27,56 @@ func printStats(ctx context.Context) error {
 	// Clear screen (ANSI escape sequence)
 	fmt.Print("\033[H\033[2J")
 
+	// Print header
 	fmt.Printf("CPU Statistics (Updated: %s)\n", stats.Timestamp.Format("15:04:05"))
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+
+	// Print core information
+	fmt.Printf("Core Configuration:\n")
 	fmt.Printf("  Physical Cores: %d\n", stats.PhysicalCores)
-	fmt.Printf("  Frequency: %d MHz\n", stats.FrequencyMHz)
+	if stats.PerformanceCores > 0 || stats.EfficiencyCores > 0 {
+		fmt.Printf("  Performance Cores: %d\n", stats.PerformanceCores)
+		fmt.Printf("  Efficiency Cores: %d\n", stats.EfficiencyCores)
+	}
+
+	// Print frequency information
+	fmt.Printf("\nFrequency Information:\n")
+	fmt.Printf("  Base Frequency: %d MHz\n", stats.FrequencyMHz)
+	if stats.PerfFrequencyMHz > 0 || stats.EffiFrequencyMHz > 0 {
+		if stats.PerfFrequencyMHz > 0 {
+			fmt.Printf("  Performance Core Freq: %d MHz\n", stats.PerfFrequencyMHz)
+		}
+		if stats.EffiFrequencyMHz > 0 {
+			fmt.Printf("  Efficiency Core Freq: %d MHz\n", stats.EffiFrequencyMHz)
+		}
+	}
+
+	// Print usage statistics
+	fmt.Printf("\nUsage Statistics:\n")
 	fmt.Printf("  Total Usage: %.2f%%\n", stats.TotalUsage)
+	fmt.Printf("  User: %.2f%%, System: %.2f%%, Idle: %.2f%%, Nice: %.2f%%\n",
+		stats.User, stats.System, stats.Idle, stats.Nice)
 	fmt.Printf("  Load Averages (1, 5, 15 min): %.2f, %.2f, %.2f\n",
 		stats.LoadAvg[0], stats.LoadAvg[1], stats.LoadAvg[2])
 
+	// Print per-core usage with improved visualization
 	fmt.Printf("\nPer-Core Usage:\n")
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 	for i, usage := range stats.CoreUsage {
 		// Create a simple bar graph
 		barLength := int(usage / cpuUsageBarScale)
 		bar := strings.Repeat("█", barLength)
-		fmt.Printf("  Core %2d [%-20s] %.2f%%\n", i, bar, usage)
+		coreType := ""
+		if i < stats.PerformanceCores {
+			coreType = "P" // Performance core
+		} else if stats.EfficiencyCores > 0 {
+			coreType = "E" // Efficiency core
+		}
+		if coreType != "" {
+			fmt.Printf("  Core %s%d [%-20s] %.2f%%\n", coreType, i, bar, usage)
+		} else {
+			fmt.Printf("  Core %2d [%-20s] %.2f%%\n", i, bar, usage)
+		}
 	}
 
 	return nil
@@ -70,7 +105,7 @@ func run() error {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	fmt.Println("Press Ctrl+C to exit...")
+	fmt.Println("\nPress Ctrl+C to exit...")
 
 	for {
 		select {

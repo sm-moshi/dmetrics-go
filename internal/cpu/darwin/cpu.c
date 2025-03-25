@@ -7,7 +7,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/sysctl.h>
+#include <sys/types.h>
 #include <unistd.h>
+
+// Define CPU frequency sysctl constants if not available
+#ifndef HW_CPU_FREQ
+#define HW_CPU_FREQ 15
+#endif
 
 // Static variables for caching
 static processor_info_array_t prev_info_array = NULL;
@@ -28,18 +34,120 @@ int get_cpu_count(void) {
 uint64_t get_cpu_freq(void) {
   uint64_t freq = 0;
   size_t len = sizeof(freq);
+  int error = 0;
+  int mib[2];
 
-  // Try getting current frequency
-  if (sysctlbyname("hw.cpufrequency", &freq, &len, NULL, 0) == 0) {
+  // Try direct sysctl for CPU frequency
+  mib[0] = CTL_HW;
+  mib[1] = HW_CPU_FREQ;
+  error = sysctl(mib, 2, &freq, &len, NULL, 0);
+  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
     return freq / 1000000; // Convert to MHz
   }
+  fprintf(
+      stderr,
+      "Warning: Direct sysctl CPU frequency failed: %s (error=%d, freq=%llu)\n",
+      strerror(errno), error, freq);
 
-  // Fallback to max frequency
-  if (sysctlbyname("hw.cpufrequency_max", &freq, &len, NULL, 0) == 0) {
+  // Try getting current frequency
+  error = sysctlbyname("hw.cpufrequency", &freq, &len, NULL, 0);
+  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+    return freq / 1000000; // Convert to MHz
+  }
+  fprintf(stderr,
+          "Warning: Failed to get current CPU frequency: %s (error=%d, "
+          "freq=%llu)\n",
+          strerror(errno), error, freq);
+
+  // Try getting max frequency
+  error = sysctlbyname("hw.cpufrequency_max", &freq, &len, NULL, 0);
+  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
     return freq / 1000000;
   }
+  fprintf(
+      stderr,
+      "Warning: Failed to get max CPU frequency: %s (error=%d, freq=%llu)\n",
+      strerror(errno), error, freq);
+
+  // Try getting nominal frequency
+  error = sysctlbyname("hw.cpufrequency_nominal", &freq, &len, NULL, 0);
+  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+    return freq / 1000000;
+  }
+  fprintf(stderr,
+          "Warning: Failed to get nominal CPU frequency: %s (error=%d, "
+          "freq=%llu)\n",
+          strerror(errno), error, freq);
+
+  // Try getting performance core frequency (Apple Silicon)
+  error = sysctlbyname("hw.perflevel0.freq_hz", &freq, &len, NULL, 0);
+  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+    return freq / 1000000;
+  }
+  fprintf(stderr,
+          "Warning: Failed to get P-core frequency: %s (error=%d, freq=%llu)\n",
+          strerror(errno), error, freq);
+
+  // Try getting efficiency core frequency (Apple Silicon)
+  error = sysctlbyname("hw.perflevel1.freq_hz", &freq, &len, NULL, 0);
+  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+    return freq / 1000000;
+  }
+  fprintf(stderr,
+          "Warning: Failed to get E-core frequency: %s (error=%d, freq=%llu)\n",
+          strerror(errno), error, freq);
+
+  // Try getting CPU speed (legacy method)
+  error = sysctlbyname("hw.cpuspeed", &freq, &len, NULL, 0);
+  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+    return freq;
+  }
+  fprintf(stderr,
+          "Warning: Failed to get CPU speed: %s (error=%d, freq=%llu)\n",
+          strerror(errno), error, freq);
+
+  // Try getting CPU clock rate
+  error = sysctlbyname("hw.clockrate", &freq, &len, NULL, 0);
+  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+    return freq;
+  }
+  fprintf(stderr,
+          "Warning: Failed to get CPU clock rate: %s (error=%d, freq=%llu)\n",
+          strerror(errno), error, freq);
+
+  // Try getting CPU frequency using sysctl machdep.tsc.frequency
+  error = sysctlbyname("machdep.tsc.frequency", &freq, &len, NULL, 0);
+  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+    return freq / 1000000;
+  }
+  fprintf(stderr,
+          "Warning: Failed to get TSC frequency: %s (error=%d, freq=%llu)\n",
+          strerror(errno), error, freq);
+
+  // Try getting CPU frequency using sysctl hw.tbfrequency
+  error = sysctlbyname("hw.tbfrequency", &freq, &len, NULL, 0);
+  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+    return freq / 1000000;
+  }
+  fprintf(stderr,
+          "Warning: Failed to get TB frequency: %s (error=%d, freq=%llu)\n",
+          strerror(errno), error, freq);
+
+  // Try getting CPU frequency using sysctl hw.busfrequency
+  error = sysctlbyname("hw.busfrequency", &freq, &len, NULL, 0);
+  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+    return freq / 1000000;
+  }
+  fprintf(stderr,
+          "Warning: Failed to get bus frequency: %s (error=%d, freq=%llu)\n",
+          strerror(errno), error, freq);
 
   // Return 0 to indicate error
+  fprintf(stderr, "Error: All CPU frequency detection methods failed\n");
+  fprintf(stderr, "Please check:\n");
+  fprintf(stderr, "1. If you have the necessary permissions\n");
+  fprintf(stderr, "2. If the sysctl values are accessible\n");
+  fprintf(stderr, "3. If your CPU/system supports frequency reporting\n");
   return 0;
 }
 
@@ -51,6 +159,7 @@ uint64_t get_perf_core_freq(void) {
   if (sysctlbyname("hw.perflevel0.freq_hz", &freq, &len, NULL, 0) == 0) {
     return freq / 1000000; // Convert to MHz
   }
+  fprintf(stderr, "Warning: Failed to get P-core frequency\n");
   return 0;
 }
 
@@ -62,6 +171,7 @@ uint64_t get_effi_core_freq(void) {
   if (sysctlbyname("hw.perflevel1.freq_hz", &freq, &len, NULL, 0) == 0) {
     return freq / 1000000;
   }
+  fprintf(stderr, "Warning: Failed to get E-core frequency\n");
   return 0;
 }
 

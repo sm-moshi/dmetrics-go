@@ -42,20 +42,16 @@ func getStats() (*types.PowerStats, error) {
 		Health:     types.BatteryHealthUnknown, // Health calculation requires more data
 	}
 
-	// Set battery state
+	// Set battery state and power source
 	if bool(cStats.is_charging) {
 		stats.State = types.BatteryStateCharging
+		stats.Source = types.PowerSourceAC
 	} else if bool(cStats.is_present) {
 		stats.State = types.BatteryStateDischarging
+		stats.Source = types.PowerSourceBattery
 	} else {
 		stats.State = types.BatteryStateUnknown
-	}
-
-	// Set power source
-	if !cStats.is_present {
 		stats.Source = types.PowerSourceAC
-	} else {
-		stats.Source = types.PowerSourceBattery
 	}
 
 	// Initialize other fields with zero values
