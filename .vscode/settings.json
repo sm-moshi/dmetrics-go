@@ -41,5 +41,8 @@
     "python.defaultInterpreterPath": "${workspaceFolder}/.vscode/mise-tools/python",
     "yaml.schemas": {
         "https://golangci-lint.run/jsonschema/golangci.jsonschema.json": "file:///Users/smeya/git/dmetrics-go/.golangci.yml"
+    },
+    "files.associations": {
+        "string.h": "c"
     }
 }

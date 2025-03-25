@@ -65,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Split large test functions into focused units
   - Added concurrent access test cases
   - Improved test readability and maintainability
+- Simplified power metrics implementation for v0.1
+  - Removed SMC dependency in favour of IOPowerSources API
+  - Focused on essential power metrics (source type, battery presence, charging state, percentage)
+  - Improved thread safety with proper locking
+  - Enhanced error handling and resource cleanup
+  - Added comprehensive documentation following British English standards
+  - Implemented proper context handling for cancellation
 
 ### Fixed
 
@@ -80,6 +87,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed function length issues
   - Removed weak random number generator usage
   - Eliminated unused mutex declarations
+
+### Removed
+
+- SMC-based power metrics functionality (deferred to v0.2)
+  - Removed SMC connection management
+  - Removed detailed power consumption metrics
+  - Removed battery health and cycle count tracking
+  - Cleaned up unused C types and functions
 
 ### Known Issues
 

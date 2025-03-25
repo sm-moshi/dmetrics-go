@@ -24,6 +24,9 @@ func NewProvider() *Provider {
 
 // GetStats returns current power and battery statistics.
 func (p *Provider) GetStats(ctx context.Context) (*types.PowerStats, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return getStats()
@@ -31,6 +34,9 @@ func (p *Provider) GetStats(ctx context.Context) (*types.PowerStats, error) {
 
 // GetPowerSource returns the current power source.
 func (p *Provider) GetPowerSource(ctx context.Context) (types.PowerSource, error) {
+	if ctx.Err() != nil {
+		return types.PowerSourceUnknown, ctx.Err()
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return getPowerSource()
@@ -38,6 +44,9 @@ func (p *Provider) GetPowerSource(ctx context.Context) (types.PowerSource, error
 
 // GetBatteryPercentage returns the current battery charge percentage.
 func (p *Provider) GetBatteryPercentage(ctx context.Context) (float64, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return getBatteryPercentage()
@@ -45,6 +54,9 @@ func (p *Provider) GetBatteryPercentage(ctx context.Context) (float64, error) {
 
 // GetBatteryState returns the current battery charging state.
 func (p *Provider) GetBatteryState(ctx context.Context) (types.BatteryState, error) {
+	if ctx.Err() != nil {
+		return types.BatteryStateUnknown, ctx.Err()
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return getBatteryState()
@@ -52,6 +64,9 @@ func (p *Provider) GetBatteryState(ctx context.Context) (types.BatteryState, err
 
 // GetBatteryHealth returns the current battery health status.
 func (p *Provider) GetBatteryHealth(ctx context.Context) (types.BatteryHealth, error) {
+	if ctx.Err() != nil {
+		return types.BatteryHealthUnknown, ctx.Err()
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return getBatteryHealth()
@@ -59,6 +74,9 @@ func (p *Provider) GetBatteryHealth(ctx context.Context) (types.BatteryHealth, e
 
 // GetTimeRemaining returns the estimated time remaining on battery power.
 func (p *Provider) GetTimeRemaining(ctx context.Context) (time.Duration, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return getTimeRemaining()
@@ -66,12 +84,17 @@ func (p *Provider) GetTimeRemaining(ctx context.Context) (time.Duration, error) 
 
 // GetPowerConsumption returns the current system power consumption.
 func (p *Provider) GetPowerConsumption(ctx context.Context) (float64, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return getPowerConsumption()
 }
 
-// Watch starts monitoring power metrics and sends updates through the returned channel.
+// Watch monitors power metrics and sends updates through the returned channel.
+// The interval parameter determines how often updates are sent.
+// The returned channel will be closed when the context is cancelled or an error occurs.
 func (p *Provider) Watch(ctx context.Context, interval time.Duration) (<-chan types.PowerStats, error) {
 	if interval <= 0 {
 		return nil, types.ErrInvalidInterval
@@ -80,9 +103,10 @@ func (p *Provider) Watch(ctx context.Context, interval time.Duration) (<-chan ty
 	ch := make(chan types.PowerStats)
 
 	go func() {
+		defer close(ch)
+
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		defer close(ch)
 
 		for {
 			select {
@@ -91,13 +115,24 @@ func (p *Provider) Watch(ctx context.Context, interval time.Duration) (<-chan ty
 			case <-ticker.C:
 				stats, err := p.GetStats(ctx)
 				if err != nil {
-					// Skip sending on error
-					continue
+					// Log error if needed
+					return
 				}
-				ch <- *stats
+
+				// Try to send stats, but respect context cancellation
+				select {
+				case ch <- *stats:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}()
 
 	return ch, nil
+}
+
+// Shutdown cleans up resources used by the provider.
+func (p *Provider) Shutdown() error {
+	return nil
 }
