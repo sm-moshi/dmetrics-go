@@ -1,144 +1,282 @@
-# ✅ TODO – dmetrics-go
+# TODO List
 
-This TODO list tracks the porting process from [darwin-metrics (Rust)](https://github.com/sm-moshi/darwin-metrics) to an idiomatic, modular, and testable Go library (`dmetrics-go`). This port will follow Go's best practices for package structure, error handling, concurrency, and system-level programming using `cgo`.
+## Version 0.1 (Current Release)
 
----
+### Completed Tasks ✅
 
-## 📦 Project Bootstrapping
+- [x] Implement thread-safe concurrent access
+  - Added mutex protection for shared resources
+  - Implemented atomic operations where appropriate
+  - Verified thread safety with race detector
+  - Added documentation for concurrency guarantees
 
-- [x] **Create Go module structure**
-  - Mirror the Rust crate layout into idiomatic Go packages.
-  - Create placeholder files for each subsystem.
+- [x] Add proper context handling for cancellation
+  - Implemented context.Context support in all APIs
+  - Added timeout and cancellation handling
+  - Ensured proper resource cleanup on cancellation
+  - Added examples demonstrating context usage
 
-- [x] **Define Go error handling model**
-  - Replace Rust's `thiserror`-based enums with structured Go error types.
-  - Add support for `errors.Is`, `errors.As`, and wrapping with `fmt.Errorf`.
+- [x] Fix per-core CPU utilisation calculation
+  - Corrected calculation methodology
+  - Added validation against system tools
+  - Implemented proper tick delta tracking
+  - Added safeguards against overflow
 
-- [x] **Initialize `go.mod` and define module path**
-  - Set up the Go module name (`dmetrics-go` or GitHub URL).
-  - Add required `x/sys`, `cgo`, and testing packages.
+- [x] Optimise memory management
+  - Implemented proper C memory cleanup
+  - Added finalizers for CGo resources
+  - Reduced allocations in hot paths
+  - Added memory usage documentation
 
-- [x] **Apply `// +build darwin` tags**
-  - Ensure platform-specific logic is excluded on non-macOS systems.
-  - Set up build constraints for any file using macOS-only frameworks (IOKit, CoreFoundation, Metal).
+- [x] Add comprehensive documentation
+  - Added package overview and examples
+  - Documented all exported symbols
+  - Added performance characteristics
+  - Included British English conventions
 
----
+- [x] Implement proper error handling
+  - Added domain-specific error types
+  - Improved error messages
+  - Added error wrapping
+  - Documented error conditions
 
-## 🧠 Core API Porting
+- [x] Add performance characterisation
+  - Documented initial collection time
+  - Measured subsequent call latency
+  - Analysed memory usage patterns
+  - Added benchmarks
 
-- [ ] **CPU Metrics**
-  - [x] Use `sysctl` via `cgo` to get CPU usage, core count
-  - [x] Recreate `cpu::usage()`
-  - [ ] Fix `cpu::frequency()` implementation (currently returns 0)
-  - [x] Implement thread-safe concurrent access
-  - [x] Add proper context handling for cancellation
+- [x] Add test coverage for core functionality
+  - Unit tests for all exported APIs
+  - Integration tests for system calls
+  - Benchmark suite
+  - Race condition tests
 
-- [ ] **Memory Metrics**
-  - Implement physical and virtual memory statistics via `sysctl`
-  - Track active, free, used, and swap memory pages
+### In Progress 🚧
 
-- [ ] **GPU Metrics (IOKit)**
-  - Read GPU vendor, model, and VRAM usage via `IOService` registry
-  - Mirror `gpu::get_vram_size()` and `get_gpu_vendor()`
+- [ ] Fix CPU frequency detection
+  - Current Status: Returns 0 for all cores
+  - Investigation Areas:
+    - sysctl calls on Intel processors
+    - IOKit API usage for Apple Silicon
+    - Frequency scaling support
+  - Acceptance Criteria:
+    - Accurate base frequency reporting
+    - Dynamic frequency updates
+    - Support for both architectures
 
-- [ ] **Temperature Sensors (SMC)**
-  - Implement `SMCOpen`, `SMCReadKey`, `SMCClose` bridges
-  - Use fan sensor keys, die temp, CPU/GPU thermals
+- [ ] Optimise integration test complexity
+  - Current Issues:
+    - Long-running test suites
+    - Flaky timing-dependent tests
+    - Complex setup/teardown
+  - Planned Improvements:
+    - Refactor to use test helpers
+    - Add proper mocking
+    - Implement parallel testing
+    - Reduce timing dependencies
 
-- [ ] **Fan Speed Metrics**
-  - Use `F0Ac`, `F1Ac` (etc.) SMC keys to read RPM per fan
-  - Structure this as `temperature/fans.go`
+### Power Metrics (Required for v0.1) 🔋
 
-- [x] **Power Source / Battery Info**
-  - [x] Read power source type (AC/battery) via `IOPSCopyPowerSourcesInfo`
-  - [x] Extract battery charge and status
-  - [x] Implement thread-safe concurrent access
-  - [x] Add proper context handling for cancellation
-  - [ ] Future v0.2: Add cycle count and health monitoring via SMC
-  - [ ] Future v0.2: Add detailed power consumption metrics
+- [ ] Power source detection
+  - Requirements:
+    - AC adapter detection and status
+    - Battery presence detection
+    - Power source transition events
+    - Multiple power source support
+  - Implementation Notes:
+    - Use IOPowerSources API
+    - Implement power source change callbacks
+    - Add power source type identification
+    - Handle system sleep/wake events
 
-- [ ] **Process Monitoring**
-  - Use `libproc` via `cgo` to list processes and gather PID stats
-  - Add CPU time, memory, command name, parent/child tracking
+- [ ] Battery metrics implementation
+  - Requirements:
+    - Current charge level
+    - Time remaining estimation
+    - Charge cycle count
+    - Battery health status
+  - Implementation Notes:
+    - Use IOKit for battery info
+    - Implement charge level monitoring
+    - Add battery health diagnostics
+    - Handle multiple battery configurations
 
-- [ ] **Network Statistics**
-  - Use BSD syscalls (`getifaddrs`, `sysctl`) to collect per-interface traffic
-  - Expose bandwidth usage, interface state, error counters
+- [ ] Power state monitoring
+  - Requirements:
+    - System power state
+    - Sleep/wake detection
+    - Power mode changes
+    - Thermal state monitoring
+  - Implementation Notes:
+    - Implement IOKit power callbacks
+    - Add power state change notifications
+    - Monitor thermal conditions
+    - Track power mode transitions
 
----
+## Version 0.2 (Next Release)
 
-## 🔬 Testing & Validation
+### Memory Metrics 📊
 
-- [ ] **Unit Tests**
-  - [x] Each package has comprehensive `*_test.go` suites with table-driven tests
-  - [x] Success and failure path testing implemented
-  - [x] Tests are properly structured and focused
-  - [x] Concurrent access testing added
-  - [ ] Refactor TestPowerMetricsIntegration (complexity: 23/20)
+- [ ] Memory utilisation tracking
+  - Requirements:
+    - Total system memory monitoring
+    - Process-specific memory usage
+    - Virtual memory statistics
+    - Memory pressure indicators
+  - Implementation Notes:
+    - Use host_statistics64() for system metrics
+    - Implement process_info() for per-process stats
+    - Add memory pressure callbacks
 
-- [ ] **Integration Tests**
-  - [ ] Complete test inter-package behavior (e.g. combined CPU + Power polling)
-  - [ ] Verify FFI and system interactions don't panic or leak
-  - [x] Concurrent access testing implemented
-  - [x] Context cancellation properly tested
-  - [ ] Address test complexity issues
+- [ ] Swap usage monitoring
+  - Features:
+    - Swap space utilisation
+    - Page-in/out rates
+    - Swap file locations
+    - Compression statistics
 
-- [ ] **macOS Version Compatibility**
-  - Validate on macOS 12, 13, 14, 15+
-  - Prefer public, stable symbols to avoid future breakage
+- [ ] Page fault statistics
+  - Metrics to Track:
+    - Major page faults
+    - Minor page faults
+    - Copy-on-write faults
+    - Zero-fill page faults
 
----
+- [ ] Memory pressure indicators
+  - Implementation:
+    - Memory pressure level detection
+    - Pressure history tracking
+    - Warning threshold configuration
+    - Callback registration
 
-## 📚 Documentation
+### GPU Metrics 🎮
 
-- [x] **Public API Docs**
-  - Added comprehensive comments to all exported functions, types, and constants
-  - Documented context usage and thread safety guarantees
-  - Added examples of proper error handling
+- [ ] GPU utilisation tracking
+  - Requirements:
+    - Support for integrated GPUs
+    - Dedicated GPU monitoring
+    - Multi-GPU systems
+    - Metal API integration
 
-- [x] **Module-Level Docs**
-  - Added `doc.go` to root and each package with overview usage
-  - Documented concurrency and context patterns
+- [ ] VRAM usage monitoring
+  - Features:
+    - Total VRAM capacity
+    - Current utilisation
+    - Per-process VRAM usage
+    - Texture memory tracking
 
-- [x] **Examples**
-  - Created examples showing common usage patterns
-  - Added examples demonstrating proper context usage
-  - Included examples of concurrent access patterns
+- [ ] Temperature monitoring
+  - Implementation:
+    - SMC interface integration
+    - Temperature sensor mapping
+    - Thermal zone monitoring
+    - Warning threshold support
 
----
+- [ ] Power consumption tracking
+  - Metrics:
+    - Current power draw
+    - Average consumption
+    - Peak usage tracking
+    - Power state transitions
 
-## 🔁 FFI & CGO Integration
+### Temperature Sensors 🌡️
 
-- [x] **Bridge Headers**
-  - Created `.h` and `.m`/`.c` files for Objective-C/SMC/IOKit glue
-  - Properly documented C function signatures
+- [ ] CPU temperature monitoring
+  - Features:
+    - Per-core temperature
+    - Package temperature
+    - Thermal throttling detection
+    - Historical tracking
 
-- [x] **Safe Wrappers**
-  - No exposure of `unsafe.Pointer` in user-facing code
-  - Abstract over CFTypes, io_service_t, etc.
-  - Added context support for cancellation
-  - Implemented proper mutex protection
+- [ ] GPU temperature monitoring
+  - Implementation:
+    - IOKit integration
+    - Thermal sensor access
+    - Multiple GPU support
+    - Thermal zone mapping
 
-- [x] **Memory Safety**
-  - Ensure all allocated memory is `free()`d properly
-  - Use `defer` to manage lifecycle of CF objects and C strings
-  - Added cleanup finalizers where needed
+- [ ] System temperature sensors
+  - Coverage:
+    - Ambient temperature
+    - Logic board sensors
+    - Power supply temperature
+    - Custom sensor support
 
----
+- [ ] Fan speed correlation
+  - Features:
+    - Temperature/fan speed correlation
+    - Thermal zone mapping
+    - Cooling system analysis
+    - Thermal profile creation
 
-## 🛠 Misc
+### Fan Speed Metrics 💨
 
-- [x] Set up `golangci-lint` and `goimports` formatting
-  - All linter issues resolved
-  - Code follows Go best practices
-  - No init functions used
+- [ ] System fan speed monitoring
+  - Requirements:
+    - Current RPM readings
+    - Maximum/minimum speeds
+    - Fan location mapping
+    - Speed percentage calculation
 
-- [x] Setup CI workflow: `go test ./...` + static checks on PR
-  - Added race detector to test suite
-  - Implemented comprehensive test coverage
+- [ ] CPU fan speed tracking
+  - Features:
+    - Dynamic speed monitoring
+    - Thermal correlation
+    - Speed curve analysis
+    - Historical tracking
 
-- [ ] Prepare semantic versioning (v0.1, v0.2, v1.0)
-  - [ ] Fix CPU frequency detection for v0.1
-  - [ ] Complete integration tests for v0.1
-  - [ ] Address test complexity issues for v0.1
-  - [ ] Document breaking changes
+- [ ] GPU fan speed tracking
+  - Implementation:
+    - IOKit integration
+    - Multiple GPU support
+    - Fan curve mapping
+    - Speed normalisation
+
+- [ ] Custom fan curve support
+  - Features:
+    - Fan curve definition
+    - Temperature thresholds
+    - Hysteresis support
+    - Profile management
+
+### Power Source Info 🔋
+
+- [ ] Battery level monitoring
+  - Requirements:
+    - Current charge level
+    - Time remaining estimate
+    - Charge cycle count
+    - Battery health metrics
+
+- [ ] Power source detection
+  - Features:
+    - AC/Battery detection
+    - Power adapter information
+    - Multiple power source support
+    - Source transition events
+
+- [ ] Charging status tracking
+  - Implementation:
+    - Charge rate monitoring
+    - Temperature influence
+    - Power delivery analysis
+    - Status change notifications
+
+- [ ] Power consumption metrics
+  - Metrics:
+    - Current power draw
+    - Energy impact scoring
+    - Power nap statistics
+    - Peak usage tracking
+
+### Future Considerations 🔮
+
+- [ ] Network Interface Metrics
+- [ ] Disk I/O Statistics
+- [ ] Process Resource Usage
+- [ ] System Load Metrics
+- [ ] Hardware Sensor Integration
+- [ ] Energy Impact Analysis
+- [ ] Thermal Management
+- [ ] Resource Pressure Monitoring

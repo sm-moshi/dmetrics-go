@@ -15,6 +15,16 @@
 #define HW_CPU_FREQ 15
 #endif
 
+// Debug logging macro
+#ifdef DEBUG
+#define DEBUG_LOG(fmt, ...) fprintf(stderr, "DEBUG: " fmt "\n", ##__VA_ARGS__)
+#else
+#define DEBUG_LOG(fmt, ...)
+#endif
+
+// Error logging macro
+#define ERROR_LOG(fmt, ...) fprintf(stderr, "ERROR: " fmt "\n", ##__VA_ARGS__)
+
 // Static variables for caching
 static processor_info_array_t prev_info_array = NULL;
 static mach_msg_type_number_t prev_info_count;
@@ -44,110 +54,64 @@ uint64_t get_cpu_freq(void) {
   if (error == 0 && freq > 0 && freq < UINT64_MAX) {
     return freq / 1000000; // Convert to MHz
   }
-  fprintf(
-      stderr,
-      "Warning: Direct sysctl CPU frequency failed: %s (error=%d, freq=%llu)\n",
-      strerror(errno), error, freq);
 
   // Try getting current frequency
-  error = sysctlbyname("hw.cpufrequency", &freq, &len, NULL, 0);
-  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
-    return freq / 1000000; // Convert to MHz
+  if (sysctlbyname("hw.cpufrequency", &freq, &len, NULL, 0) == 0 && freq > 0) {
+    return freq / 1000000;
   }
-  fprintf(stderr,
-          "Warning: Failed to get current CPU frequency: %s (error=%d, "
-          "freq=%llu)\n",
-          strerror(errno), error, freq);
 
   // Try getting max frequency
-  error = sysctlbyname("hw.cpufrequency_max", &freq, &len, NULL, 0);
-  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+  if (sysctlbyname("hw.cpufrequency_max", &freq, &len, NULL, 0) == 0 &&
+      freq > 0) {
     return freq / 1000000;
   }
-  fprintf(
-      stderr,
-      "Warning: Failed to get max CPU frequency: %s (error=%d, freq=%llu)\n",
-      strerror(errno), error, freq);
 
   // Try getting nominal frequency
-  error = sysctlbyname("hw.cpufrequency_nominal", &freq, &len, NULL, 0);
-  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+  if (sysctlbyname("hw.cpufrequency_nominal", &freq, &len, NULL, 0) == 0 &&
+      freq > 0) {
     return freq / 1000000;
   }
-  fprintf(stderr,
-          "Warning: Failed to get nominal CPU frequency: %s (error=%d, "
-          "freq=%llu)\n",
-          strerror(errno), error, freq);
 
   // Try getting performance core frequency (Apple Silicon)
-  error = sysctlbyname("hw.perflevel0.freq_hz", &freq, &len, NULL, 0);
-  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+  if (sysctlbyname("hw.perflevel0.freq_hz", &freq, &len, NULL, 0) == 0 &&
+      freq > 0) {
     return freq / 1000000;
   }
-  fprintf(stderr,
-          "Warning: Failed to get P-core frequency: %s (error=%d, freq=%llu)\n",
-          strerror(errno), error, freq);
 
   // Try getting efficiency core frequency (Apple Silicon)
-  error = sysctlbyname("hw.perflevel1.freq_hz", &freq, &len, NULL, 0);
-  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+  if (sysctlbyname("hw.perflevel1.freq_hz", &freq, &len, NULL, 0) == 0 &&
+      freq > 0) {
     return freq / 1000000;
   }
-  fprintf(stderr,
-          "Warning: Failed to get E-core frequency: %s (error=%d, freq=%llu)\n",
-          strerror(errno), error, freq);
 
   // Try getting CPU speed (legacy method)
-  error = sysctlbyname("hw.cpuspeed", &freq, &len, NULL, 0);
-  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+  if (sysctlbyname("hw.cpuspeed", &freq, &len, NULL, 0) == 0 && freq > 0) {
     return freq;
   }
-  fprintf(stderr,
-          "Warning: Failed to get CPU speed: %s (error=%d, freq=%llu)\n",
-          strerror(errno), error, freq);
 
   // Try getting CPU clock rate
-  error = sysctlbyname("hw.clockrate", &freq, &len, NULL, 0);
-  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+  if (sysctlbyname("hw.clockrate", &freq, &len, NULL, 0) == 0 && freq > 0) {
     return freq;
   }
-  fprintf(stderr,
-          "Warning: Failed to get CPU clock rate: %s (error=%d, freq=%llu)\n",
-          strerror(errno), error, freq);
 
   // Try getting CPU frequency using sysctl machdep.tsc.frequency
-  error = sysctlbyname("machdep.tsc.frequency", &freq, &len, NULL, 0);
-  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+  if (sysctlbyname("machdep.tsc.frequency", &freq, &len, NULL, 0) == 0 &&
+      freq > 0) {
     return freq / 1000000;
   }
-  fprintf(stderr,
-          "Warning: Failed to get TSC frequency: %s (error=%d, freq=%llu)\n",
-          strerror(errno), error, freq);
 
   // Try getting CPU frequency using sysctl hw.tbfrequency
-  error = sysctlbyname("hw.tbfrequency", &freq, &len, NULL, 0);
-  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+  if (sysctlbyname("hw.tbfrequency", &freq, &len, NULL, 0) == 0 && freq > 0) {
     return freq / 1000000;
   }
-  fprintf(stderr,
-          "Warning: Failed to get TB frequency: %s (error=%d, freq=%llu)\n",
-          strerror(errno), error, freq);
 
   // Try getting CPU frequency using sysctl hw.busfrequency
-  error = sysctlbyname("hw.busfrequency", &freq, &len, NULL, 0);
-  if (error == 0 && freq > 0 && freq < UINT64_MAX) {
+  if (sysctlbyname("hw.busfrequency", &freq, &len, NULL, 0) == 0 && freq > 0) {
     return freq / 1000000;
   }
-  fprintf(stderr,
-          "Warning: Failed to get bus frequency: %s (error=%d, freq=%llu)\n",
-          strerror(errno), error, freq);
 
-  // Return 0 to indicate error
-  fprintf(stderr, "Error: All CPU frequency detection methods failed\n");
-  fprintf(stderr, "Please check:\n");
-  fprintf(stderr, "1. If you have the necessary permissions\n");
-  fprintf(stderr, "2. If the sysctl values are accessible\n");
-  fprintf(stderr, "3. If your CPU/system supports frequency reporting\n");
+  // Only log error if all methods fail
+  fprintf(stderr, "Warning: Failed to detect CPU frequency using any method\n");
   return 0;
 }
 
@@ -156,10 +120,10 @@ uint64_t get_perf_core_freq(void) {
   size_t len = sizeof(freq);
 
   // Try getting performance core frequency (P-cores)
-  if (sysctlbyname("hw.perflevel0.freq_hz", &freq, &len, NULL, 0) == 0) {
+  if (sysctlbyname("hw.perflevel0.freq_hz", &freq, &len, NULL, 0) == 0 &&
+      freq > 0) {
     return freq / 1000000; // Convert to MHz
   }
-  fprintf(stderr, "Warning: Failed to get P-core frequency\n");
   return 0;
 }
 
@@ -168,10 +132,10 @@ uint64_t get_effi_core_freq(void) {
   size_t len = sizeof(freq);
 
   // Try getting efficiency core frequency (E-cores)
-  if (sysctlbyname("hw.perflevel1.freq_hz", &freq, &len, NULL, 0) == 0) {
+  if (sysctlbyname("hw.perflevel1.freq_hz", &freq, &len, NULL, 0) == 0 &&
+      freq > 0) {
     return freq / 1000000;
   }
-  fprintf(stderr, "Warning: Failed to get E-core frequency\n");
   return 0;
 }
 
@@ -199,8 +163,13 @@ int get_cpu_stats(cpu_stats_t *stats) {
   if (!stats)
     return CPU_ERROR_MEMORY;
 
-  pthread_mutex_lock(&cpu_mutex);
+  int ret = pthread_mutex_lock(&cpu_mutex);
+  if (ret != 0) {
+    ERROR_LOG("Failed to acquire mutex: %s", strerror(ret));
+    return CPU_ERROR_MUTEX;
+  }
 
+  DEBUG_LOG("Collecting CPU stats");
   processor_info_array_t info_array;
   mach_msg_type_number_t info_count;
 
@@ -209,6 +178,7 @@ int get_cpu_stats(cpu_stats_t *stats) {
                           &info_array, &info_count);
 
   if (error != KERN_SUCCESS) {
+    ERROR_LOG("Failed to get processor info: %d", error);
     pthread_mutex_unlock(&cpu_mutex);
     return CPU_ERROR_HOST_PROCESSOR_INFO;
   }
@@ -254,7 +224,13 @@ int get_cpu_stats(cpu_stats_t *stats) {
   prev_info_array = info_array;
   prev_info_count = info_count;
 
-  pthread_mutex_unlock(&cpu_mutex);
+  ret = pthread_mutex_unlock(&cpu_mutex);
+  if (ret != 0) {
+    ERROR_LOG("Failed to release mutex: %s", strerror(ret));
+    return CPU_ERROR_MUTEX;
+  }
+
+  DEBUG_LOG("CPU stats collection completed successfully");
   return CPU_SUCCESS;
 }
 
@@ -307,31 +283,76 @@ void cleanup_cpu_stats(void) {
 }
 
 int get_cpu_core_stats(cpu_core_stats_t *stats, int *num_cores) {
+  if (!stats || !num_cores)
+    return CPU_ERROR_MEMORY;
+
+  pthread_mutex_lock(&cpu_mutex);
+
   processor_info_array_t info_array;
   mach_msg_type_number_t info_count;
-  natural_t cpu_count;
 
   kern_return_t error =
-      host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &cpu_count,
+      host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &num_cpus,
                           &info_array, &info_count);
 
   if (error != KERN_SUCCESS) {
+    pthread_mutex_unlock(&cpu_mutex);
     return CPU_ERROR_HOST_PROCESSOR_INFO;
   }
 
   processor_cpu_load_info_t cpu_load_info =
       (processor_cpu_load_info_t)info_array;
-  *num_cores = cpu_count;
 
-  for (natural_t i = 0; i < cpu_count; i++) {
-    stats[i].core_id = i;
-    stats[i].user = cpu_load_info[i].cpu_ticks[CPU_STATE_USER];
-    stats[i].system = cpu_load_info[i].cpu_ticks[CPU_STATE_SYSTEM];
-    stats[i].idle = cpu_load_info[i].cpu_ticks[CPU_STATE_IDLE];
-    stats[i].nice = cpu_load_info[i].cpu_ticks[CPU_STATE_NICE];
+  // If we don't have previous data, store it and wait
+  if (!prev_info_array) {
+    prev_info_array = info_array;
+    prev_info_count = info_count;
+    pthread_mutex_unlock(&cpu_mutex);
+    usleep(500000); // 500ms for better sampling
+    return get_cpu_core_stats(stats, num_cores);
   }
 
-  vm_deallocate(mach_task_self(), (vm_address_t)info_array, info_count);
+  processor_cpu_load_info_t prev_cpu_load =
+      (processor_cpu_load_info_t)prev_info_array;
+
+  // Calculate per-core deltas and percentages
+  for (natural_t i = 0; i < num_cpus; i++) {
+    unsigned long long user = cpu_load_info[i].cpu_ticks[CPU_STATE_USER] -
+                              prev_cpu_load[i].cpu_ticks[CPU_STATE_USER];
+    unsigned long long system = cpu_load_info[i].cpu_ticks[CPU_STATE_SYSTEM] -
+                                prev_cpu_load[i].cpu_ticks[CPU_STATE_SYSTEM];
+    unsigned long long idle = cpu_load_info[i].cpu_ticks[CPU_STATE_IDLE] -
+                              prev_cpu_load[i].cpu_ticks[CPU_STATE_IDLE];
+    unsigned long long nice = cpu_load_info[i].cpu_ticks[CPU_STATE_NICE] -
+                              prev_cpu_load[i].cpu_ticks[CPU_STATE_NICE];
+
+    unsigned long long total = user + system + idle + nice;
+    if (total > 0) {
+      // Store individual percentages for each state
+      stats[i].user = (double)user / total * 100.0;
+      stats[i].system = (double)system / total * 100.0;
+      stats[i].idle = (double)idle / total * 100.0;
+      stats[i].nice = (double)nice / total * 100.0;
+    } else {
+      // If no ticks recorded, assume idle
+      stats[i].user = 0;
+      stats[i].system = 0;
+      stats[i].idle = 100.0;
+      stats[i].nice = 0;
+    }
+  }
+
+  *num_cores = num_cpus;
+
+  // Clean up old info array
+  vm_deallocate(mach_task_self(), (vm_address_t)prev_info_array,
+                prev_info_count * sizeof(natural_t));
+
+  // Store current info array for next time
+  prev_info_array = info_array;
+  prev_info_count = info_count;
+
+  pthread_mutex_unlock(&cpu_mutex);
   return CPU_SUCCESS;
 }
 
@@ -350,4 +371,14 @@ int get_per_core_cpu_stats(processor_cpu_load_info_t *cpu_load_info,
 
   *cpu_load_info = (processor_cpu_load_info_t)info_array;
   return CPU_SUCCESS;
+}
+
+void init_cpu_stats(void) {
+  // Initialize mutex if needed
+  pthread_mutex_init(&cpu_mutex, NULL);
+
+  // Ensure prev_info_array is NULL
+  prev_info_array = NULL;
+  prev_info_count = 0;
+  num_cpus = 0;
 }

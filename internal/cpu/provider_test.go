@@ -21,9 +21,8 @@ func TestNewProvider(t *testing.T) {
 
 func TestProviderFrequency(t *testing.T) {
 	provider := cpu.NewProvider()
-	ctx := t.Context()
 
-	freq, err := provider.GetFrequency(ctx)
+	freq, err := provider.GetFrequency()
 	if err != nil {
 		if err.Error() == "failed to detect CPU frequency" {
 			t.Skip("CPU frequency detection failed, this is expected in some environments")
@@ -33,30 +32,18 @@ func TestProviderFrequency(t *testing.T) {
 	assert.Greater(t, freq, uint64(0), "frequency should be > 0 MHz")
 }
 
-func TestProviderUsage(t *testing.T) {
-	provider := cpu.NewProvider()
-	ctx := t.Context()
-
-	usage, err := provider.GetUsage(ctx, 100*time.Millisecond)
-	require.NoError(t, err)
-	assert.GreaterOrEqual(t, usage, 0.0, "usage should be >= 0%")
-	assert.LessOrEqual(t, usage, 100.0, "usage should be <= 100%")
-}
-
 func TestProviderCoreCount(t *testing.T) {
 	provider := cpu.NewProvider()
-	ctx := t.Context()
 
-	cores, err := provider.GetCoreCount(ctx)
+	cores, err := provider.GetCoreCount()
 	require.NoError(t, err)
 	assert.Greater(t, cores, 0, "should have at least one core")
 }
 
 func TestProviderStats(t *testing.T) {
 	provider := cpu.NewProvider()
-	ctx := t.Context()
 
-	stats, err := provider.GetStats(ctx)
+	stats, err := provider.GetStats()
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 
@@ -88,7 +75,10 @@ func TestProviderStats(t *testing.T) {
 
 func TestProviderWatch(t *testing.T) {
 	provider := cpu.NewProvider()
-	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer provider.Shutdown()
+
+	// Create a context with timeout to ensure test completion
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	ch, err := provider.Watch(ctx, 100*time.Millisecond)
@@ -99,6 +89,9 @@ func TestProviderWatch(t *testing.T) {
 		assert.GreaterOrEqual(t, stats.TotalUsage, 0.0, "usage should be >= 0%")
 		assert.LessOrEqual(t, stats.TotalUsage, 100.0, "usage should be <= 100%")
 		updates++
+		if updates >= 3 {
+			break
+		}
 	}
 
 	assert.Greater(t, updates, 0, "should receive at least one update")

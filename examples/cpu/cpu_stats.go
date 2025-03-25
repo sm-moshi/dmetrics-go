@@ -13,17 +13,12 @@ import (
 	"time"
 
 	"github.com/sm-moshi/dmetrics-go/internal/cpu"
+	"github.com/sm-moshi/dmetrics-go/pkg/metrics/types"
 )
 
 const cpuUsageBarScale = 5 // Each bar character represents 5% CPU usage
 
-func printStats(ctx context.Context) error {
-	provider := cpu.NewProvider()
-	stats, err := provider.GetStats(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get CPU stats: %w", err)
-	}
-
+func printStats(stats *types.CPUStats) error {
 	// Clear screen (ANSI escape sequence)
 	fmt.Print("\033[H\033[2J")
 
@@ -63,19 +58,27 @@ func printStats(ctx context.Context) error {
 	fmt.Printf("\nPer-Core Usage:\n")
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 	for i, usage := range stats.CoreUsage {
-		// Create a simple bar graph
+		// Create a bar graph with finer granularity
 		barLength := int(usage / cpuUsageBarScale)
+		if usage > 0 && barLength == 0 {
+			barLength = 1 // Show at least one bar for non-zero usage
+		}
 		bar := strings.Repeat("█", barLength)
-		coreType := ""
+		padding := strings.Repeat(" ", 20-barLength)
+
+		// Determine core type
+		var coreType string
 		if i < stats.PerformanceCores {
 			coreType = "P" // Performance core
 		} else if stats.EfficiencyCores > 0 {
 			coreType = "E" // Efficiency core
 		}
+
+		// Format the output with consistent spacing
 		if coreType != "" {
-			fmt.Printf("  Core %s%d [%-20s] %.2f%%\n", coreType, i, bar, usage)
+			fmt.Printf("  Core %s%-2d [%s%s] %5.2f%%\n", coreType, i, bar, padding, usage)
 		} else {
-			fmt.Printf("  Core %2d [%-20s] %.2f%%\n", i, bar, usage)
+			fmt.Printf("  Core %-3d [%s%s] %5.2f%%\n", i, bar, padding, usage)
 		}
 	}
 
@@ -96,14 +99,23 @@ func run() error {
 		cancel()
 	}()
 
+	provider := cpu.NewProvider()
+	defer provider.Shutdown()
+
 	// Initial check to ensure we can get stats
-	if err := printStats(ctx); err != nil {
+	stats, err := provider.GetStats()
+	if err != nil {
 		return fmt.Errorf("initial stats check failed: %w", err)
 	}
+	if err := printStats(stats); err != nil {
+		return fmt.Errorf("failed to print initial stats: %w", err)
+	}
 
-	// Print stats every second
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
+	// Start watching CPU stats with context support
+	statsCh, err := provider.Watch(ctx, time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to start CPU monitoring: %w", err)
+	}
 
 	fmt.Println("\nPress Ctrl+C to exit...")
 
@@ -111,11 +123,14 @@ func run() error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-sigCh:
-			fmt.Println("\nShutting down...")
-			return nil
-		case <-ticker.C:
-			if err := printStats(ctx); err != nil {
+		case stats, ok := <-statsCh:
+			if !ok {
+				if ctx.Err() != nil {
+					return nil // Normal shutdown
+				}
+				return fmt.Errorf("CPU monitoring stopped unexpectedly")
+			}
+			if err := printStats(stats); err != nil {
 				if ctx.Err() != nil {
 					return nil // Context cancelled, exit silently
 				}
