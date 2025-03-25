@@ -42,7 +42,16 @@ typedef struct {
 #define SMC_ERROR_OPEN_FAILED -3
 #define SMC_ERROR_PERMISSION -4
 
+// Error severity levels
+#define SMC_SEVERITY_INFO 0    // Informational messages
+#define SMC_SEVERITY_WARNING 1 // Warning conditions
+#define SMC_SEVERITY_ERROR 2   // Error conditions
+
 // Error information structure for detailed error reporting
+// All error messages are logged to syslog with appropriate priority levels:
+// - Severity 0 (Info) -> LOG_INFO
+// - Severity 1 (Warning) -> LOG_WARNING
+// - Severity 2 (Error) -> LOG_ERR
 typedef struct {
   int code;            // Error code
   const char *message; // Error message in British English

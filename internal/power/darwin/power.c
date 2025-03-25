@@ -6,6 +6,7 @@
 #include <os/lock.h>
 #include <stdbool.h>
 #include <string.h>
+#include <syslog.h>
 
 // SMC keys for power information
 #define SMC_KEY_CPU_POWER "PC0C"
@@ -206,9 +207,35 @@ bool get_system_power_info(system_power_t *power) {
   return success;
 }
 
+// Error logging function
+static void log_smc_error(smc_error_info_t *error, const char *context) {
+  if (!error)
+    return;
+
+  int priority;
+  switch (error->severity) {
+  case 0:
+    priority = LOG_INFO;
+    break;
+  case 1:
+    priority = LOG_WARNING;
+    break;
+  case 2:
+    priority = LOG_ERR;
+    break;
+  default:
+    priority = LOG_DEBUG;
+  }
+
+  syslog(priority, "SMC Error [%s]: %s (code: %d)", context, error->message,
+         error->code);
+}
+
+// Update init_smc_with_options to use error logging
 int init_smc_with_options(smc_connection_t *conn,
                           const smc_init_options_t *options) {
   if (!conn) {
+    syslog(LOG_ERR, "SMC Error: NULL connection pointer");
     return SMC_ERROR_INIT_KEYS;
   }
 
@@ -228,6 +255,7 @@ int init_smc_with_options(smc_connection_t *conn,
     conn->error.code = SMC_ERROR_NO_SERVICE;
     conn->error.message = "SMC service not found";
     conn->error.severity = 2;
+    log_smc_error(&conn->error, "Service Discovery");
     return SMC_ERROR_NO_SERVICE;
   }
 
@@ -241,18 +269,20 @@ int init_smc_with_options(smc_connection_t *conn,
     conn->error.code = SMC_ERROR_OPEN_FAILED;
     conn->error.message = "Failed to open SMC connection";
     conn->error.severity = 2;
+    log_smc_error(&conn->error, "Connection Open");
     return SMC_ERROR_OPEN_FAILED;
   }
 
   // Initialize SMC keys if needed
   if (!options || !options->skip_power_keys) {
+    syslog(LOG_INFO, "SMC: Initialising power keys");
     // Key initialization would go here
-    // For now, just mark as successful
-    conn->error.code = SMC_SUCCESS;
-    conn->error.message = "SMC initialised successfully";
-    conn->error.severity = 0;
   }
 
+  conn->error.code = SMC_SUCCESS;
+  conn->error.message = "SMC initialised successfully";
+  conn->error.severity = 0;
+  log_smc_error(&conn->error, "Initialisation");
   return SMC_SUCCESS;
 }
 
@@ -275,10 +305,13 @@ bool is_smc_limited_mode(smc_connection_t *conn) {
   return limited;
 }
 
+// Update read_smc_key to include error logging
 static bool read_smc_key(io_connect_t conn, const char *key_str,
                          smc_cmd_t *cmd) {
-  if (!key_str || !cmd)
+  if (!key_str || !cmd) {
+    syslog(LOG_ERR, "SMC Error: Invalid parameters for key reading");
     return false;
+  }
 
   // Convert key string to uint32_t
   uint32_t key =
@@ -296,8 +329,10 @@ static bool read_smc_key(io_connect_t conn, const char *key_str,
   kern_return_t result =
       IOConnectCallStructMethod(conn, 2, cmd, sizeof(smc_cmd_t), cmd, &size);
 
-  if (result != KERN_SUCCESS)
+  if (result != KERN_SUCCESS) {
+    syslog(LOG_ERR, "SMC Error: Failed to read key info for %s", key_str);
     return false;
+  }
 
   // Now read the actual key value
   cmd->cmd = SMC_CMD_READ_KEY;
@@ -307,7 +342,13 @@ static bool read_smc_key(io_connect_t conn, const char *key_str,
   result =
       IOConnectCallStructMethod(conn, 2, cmd, sizeof(smc_cmd_t), cmd, &size);
 
-  return result == KERN_SUCCESS;
+  if (result != KERN_SUCCESS) {
+    syslog(LOG_ERR, "SMC Error: Failed to read key value for %s", key_str);
+    return false;
+  }
+
+  syslog(LOG_DEBUG, "SMC: Successfully read key %s", key_str);
+  return true;
 }
 
 static float decode_smc_float(const smc_cmd_t *cmd) {
