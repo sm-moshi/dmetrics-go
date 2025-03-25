@@ -56,6 +56,10 @@
 {"type":"entity","name":"SMC_Initialization_Improvements","entityType":"Feature","observations":["Working on feature/smc-init-improvements branch","Added SMC connection cleanup functionality","Implemented thread-safe cleanup with lock handling","Added proper error state management","Following RAII patterns for resource management"],"createdAt":"2025-03-25T16:46:40.027Z","version":1}
 {"type":"entity","name":"power.h","entityType":"File","observations":["Contains SMC connection and error handling structures","Added cleanup_smc_connection function declaration","Includes thread-safe operation support","Uses os_unfair_lock for synchronization"],"createdAt":"2025-03-25T16:46:40.030Z","version":1}
 {"type":"entity","name":"power.c","entityType":"File","observations":["Implements SMC connection management","Added cleanup_smc_connection implementation","Uses thread-safe operations with locks","Handles SMC key reading and value decoding"],"createdAt":"2025-03-25T16:46:40.030Z","version":1}
+{"type":"entity","name":"FPC4_Format","entityType":"DataFormat","observations":["12-bit integer part","4-bit fraction part","Total 16 bits","Example: 15.125 = 0x0F02 (15 + 2/16)","Successfully fixed implementation","Uses data[0] as integer part","Uses data[1] & 0xF for fraction part","Divides fraction by 16.0f","Test now passes with value 15.125"],"createdAt":"2025-03-25T17:36:29.061Z","version":1}
+{"type":"entity","name":"Current_Implementation","entityType":"CodeImplementation","observations":["Located in decode_smc_float function","Current implementation may have byte order issues","Needs to properly handle 12-bit integer and 4-bit fraction parts"],"createdAt":"2025-03-25T17:36:29.072Z","version":1}
+{"type":"entity","name":"Test_Case","entityType":"TestCase","observations":["Test value: 15.125","Expected hex: 0x0F02","First byte: 0x0F (15)","Second byte: 0x02 (2/16 = 0.125)"],"createdAt":"2025-03-25T17:36:29.072Z","version":1}
+{"type":"entity","name":"FPE2_Format","entityType":"DataFormat","observations":["14-bit integer part","2-bit fraction part","Total 16 bits","Test expects 20.25 but getting 1280.250000"],"createdAt":"2025-03-25T17:42:32.472Z","version":1}
 {"type":"relation","from":"dmetrics-go","to":"cpu_package","relationType":"contains","createdAt":"2025-03-24T14:39:01.275Z","version":1}
 {"type":"relation","from":"cpu_package","to":"cpu_implementation","relationType":"implements","createdAt":"2025-03-24T14:39:01.275Z","version":1}
 {"type":"relation","from":"cpu_package","to":"test_suite","relationType":"verified by","createdAt":"2025-03-24T14:39:01.275Z","version":1}
@@ -137,3 +141,6 @@
 {"type":"relation","from":"SMC_Initialization_Improvements","to":"power.h","relationType":"modifies","createdAt":"2025-03-25T16:46:47.455Z","version":1}
 {"type":"relation","from":"SMC_Initialization_Improvements","to":"power.c","relationType":"modifies","createdAt":"2025-03-25T16:46:47.455Z","version":1}
 {"type":"relation","from":"power.h","to":"power.c","relationType":"defines_interface_for","createdAt":"2025-03-25T16:46:47.455Z","version":1}
+{"type":"relation","from":"FPC4_Format","to":"Current_Implementation","relationType":"defines requirements for","createdAt":"2025-03-25T17:36:34.369Z","version":1}
+{"type":"relation","from":"Test_Case","to":"Current_Implementation","relationType":"validates","createdAt":"2025-03-25T17:36:34.369Z","version":1}
+{"type":"relation","from":"FPC4_Format","to":"Test_Case","relationType":"specifies format for","createdAt":"2025-03-25T17:36:34.369Z","version":1}

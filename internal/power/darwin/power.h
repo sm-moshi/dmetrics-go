@@ -37,10 +37,9 @@ typedef struct {
 
 // Error codes for SMC operations
 #define SMC_SUCCESS 0
-#define SMC_ERROR_INIT_KEYS -1
-#define SMC_ERROR_NO_SERVICE -2
-#define SMC_ERROR_OPEN_FAILED -3
-#define SMC_ERROR_PERMISSION -4
+#define SMC_ERROR_INIT_KEYS 1
+#define SMC_ERROR_NO_SERVICE 2
+#define SMC_ERROR_OPEN_FAILED 3
 
 // Error severity levels
 #define SMC_SEVERITY_INFO 0    // Informational messages
@@ -94,5 +93,30 @@ int init_smc_with_options(smc_connection_t *conn,
 void get_smc_error_info(smc_connection_t *conn, smc_error_info_t *error);
 bool is_smc_limited_mode(smc_connection_t *conn);
 void cleanup_smc_connection(smc_connection_t *conn);
+
+// SMC data types for testing
+#define SMC_TYPE_FP1F 0x66703166 // 'fp1f' in hex
+#define SMC_TYPE_FP4C 0x66703463 // 'fp4c' in hex
+#define SMC_TYPE_FP5B 0x6670356B // 'fp5b' in hex
+#define SMC_TYPE_FP6A 0x66703661 // 'fp6a' in hex
+#define SMC_TYPE_FP79 0x66703739 // 'fp79' in hex
+#define SMC_TYPE_FP88 0x66703838 // 'fp88' in hex
+#define SMC_TYPE_FPA6 0x66706136 // 'fpa6' in hex
+#define SMC_TYPE_FPC4 0x66706334 // 'fpc4' in hex
+#define SMC_TYPE_FPE2 0x66706532 // 'fpe2' in hex
+
+// SMC command struct for testing
+typedef struct {
+  uint32_t key;
+  uint32_t versioning;
+  uint8_t cmd;
+  uint32_t result;
+  uint32_t unknown;
+  uint8_t data[32];
+  uint32_t keyInfo;
+} smc_cmd_t;
+
+// SMC float decoding function
+float decode_smc_float(const smc_cmd_t *cmd);
 
 #endif // POWER_H

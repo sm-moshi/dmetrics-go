@@ -44,17 +44,6 @@ typedef struct {
   uint8_t dataAttributes;
 } smc_key_info_t;
 
-// SMC command struct
-typedef struct {
-  uint32_t key;
-  uint32_t versioning;
-  uint8_t cmd;
-  uint32_t result;
-  uint32_t unknown;
-  uint8_t data[32];
-  uint32_t keyInfo;
-} smc_cmd_t;
-
 // Global SMC connection with thread safety
 static struct {
   io_connect_t conn;
@@ -362,7 +351,15 @@ static bool read_smc_key(io_connect_t conn, const char *key_str,
   return true;
 }
 
-static float decode_smc_float(const smc_cmd_t *cmd) {
+bool init_smc(void) {
+  smc_connection_t conn;
+  smc_init_options_t options = {.allow_limited_mode = false,
+                                .skip_power_keys = false,
+                                .timeout_ms = 1000};
+  return init_smc_with_options(&conn, &options) == SMC_SUCCESS;
+}
+
+float decode_smc_float(const smc_cmd_t *cmd) {
   if (!cmd) {
     syslog(LOG_ERR, "SMC Error: NULL command pointer in decode_smc_float");
     return 0.0f;
@@ -373,38 +370,49 @@ static float decode_smc_float(const smc_cmd_t *cmd) {
 
   switch (data_type) {
   case SMC_TYPE_FP1F: // 1-bit exponent, 15-bit fraction
-    return (float)data[0] + ((float)data[1] / (1 << 15));
+    return (float)data[0] + ((float)(data[1] & 0x7F) / (1 << 7));
 
-  case SMC_TYPE_FP4C: // 4-bit exponent, 12-bit fraction
-    return (float)((data[0] << 8 | data[1]) >> 4) +
-           ((float)(data[1] & 0xF) / (1 << 12));
+  case SMC_TYPE_FP4C: { // 4-bit exponent, 12-bit fraction
+    uint16_t value = (data[0] << 8) | data[1];
+    return (float)value / 4096.0f; // 2^12 = 4096
+  }
 
-  case SMC_TYPE_FP5B: // 5-bit exponent, 11-bit fraction
-    return (float)((data[0] << 8 | data[1]) >> 5) +
-           ((float)(data[1] & 0x1F) / (1 << 11));
+  case SMC_TYPE_FP5B: { // 5-bit exponent, 11-bit fraction
+    uint16_t value = (data[0] << 8) | data[1];
+    return (float)value / 2048.0f; // 2^11 = 2048
+  }
 
-  case SMC_TYPE_FP6A: // 6-bit exponent, 10-bit fraction
-    return (float)((data[0] << 8 | data[1]) >> 6) +
-           ((float)(data[1] & 0x3F) / (1 << 10));
+  case SMC_TYPE_FP6A: { // 6-bit exponent, 10-bit fraction
+    uint16_t value = (data[0] << 8) | data[1];
+    return (float)value / 1024.0f; // 2^10 = 1024
+  }
 
-  case SMC_TYPE_FP79: // 7-bit exponent, 9-bit fraction
-    return (float)((data[0] << 8 | data[1]) >> 7) +
-           ((float)(data[1] & 0x7F) / (1 << 9));
+  case SMC_TYPE_FP79: { // 7-bit exponent, 9-bit fraction
+    uint16_t value = (data[0] << 8) | data[1];
+    return (float)value / 512.0f; // 2^9 = 512
+  }
 
   case SMC_TYPE_FP88: // 8-bit integer, 8-bit fraction
     return (float)data[0] + ((float)data[1] / (1 << 8));
 
-  case SMC_TYPE_FPA6: // 10-bit integer, 6-bit fraction
-    return (float)((data[0] << 8 | data[1]) >> 6) +
-           ((float)(data[1] & 0x3F) / (1 << 6));
+  case SMC_TYPE_FPA6: { // 10-bit integer, 6-bit fraction
+    uint16_t value = (data[0] << 8) | data[1];
+    uint16_t integer = value >> 6;
+    uint16_t fraction = value & 0x3F;
+    return (float)integer + ((float)fraction / 64.0f); // 2^6 = 64
+  }
 
-  case SMC_TYPE_FPC4: // 12-bit integer, 4-bit fraction
-    return (float)((data[0] << 8 | data[1]) >> 4) +
-           ((float)(data[1] & 0xF) / (1 << 4));
+  case SMC_TYPE_FPC4: { // 12-bit integer, 4-bit fraction
+    uint8_t integer = data[0];
+    uint8_t fraction = data[1] & 0xF; // Get the lower 4 bits
+    return (float)integer + ((float)fraction / 16.0f);
+  }
 
-  case SMC_TYPE_FPE2: // 14-bit integer, 2-bit fraction
-    return (float)((data[0] << 8 | data[1]) >> 2) +
-           ((float)(data[1] & 0x3) / (1 << 2));
+  case SMC_TYPE_FPE2: { // 14-bit integer, 2-bit fraction
+    uint8_t integer = data[0];
+    uint8_t fraction = data[1] & 0x3; // Get the bottom 2 bits
+    return (float)integer + ((float)fraction / 4.0f);
+  }
 
   default:
     syslog(LOG_WARNING, "SMC Warning: Unsupported float type: 0x%08x",
@@ -431,6 +439,50 @@ bool get_smc_float(const char *key, float *value) {
   return success;
 }
 
+// Cleanup power source keys
+static void cleanup_power_source_keys(void) {
+  if (kPowerSourceStateKey) {
+    CFRelease(kPowerSourceStateKey);
+    kPowerSourceStateKey = NULL;
+  }
+  if (kPowerSourceTypeKey) {
+    CFRelease(kPowerSourceTypeKey);
+    kPowerSourceTypeKey = NULL;
+  }
+  if (kPowerSourceInternalBattery) {
+    CFRelease(kPowerSourceInternalBattery);
+    kPowerSourceInternalBattery = NULL;
+  }
+  if (kPowerSourceChargingKey) {
+    CFRelease(kPowerSourceChargingKey);
+    kPowerSourceChargingKey = NULL;
+  }
+  if (kPowerSourceChargedKey) {
+    CFRelease(kPowerSourceChargedKey);
+    kPowerSourceChargedKey = NULL;
+  }
+  if (kPowerSourceCurrentCapacityKey) {
+    CFRelease(kPowerSourceCurrentCapacityKey);
+    kPowerSourceCurrentCapacityKey = NULL;
+  }
+  if (kPowerSourceMaxCapacityKey) {
+    CFRelease(kPowerSourceMaxCapacityKey);
+    kPowerSourceMaxCapacityKey = NULL;
+  }
+  if (kPowerSourceTimeToEmptyKey) {
+    CFRelease(kPowerSourceTimeToEmptyKey);
+    kPowerSourceTimeToEmptyKey = NULL;
+  }
+  if (kPowerSourceCycleCountKey) {
+    CFRelease(kPowerSourceCycleCountKey);
+    kPowerSourceCycleCountKey = NULL;
+  }
+  if (kPowerSourceDesignCapacityKey) {
+    CFRelease(kPowerSourceDesignCapacityKey);
+    kPowerSourceDesignCapacityKey = NULL;
+  }
+}
+
 void cleanup_smc_connection(smc_connection_t *conn) {
   if (!conn)
     return;
@@ -443,11 +495,15 @@ void cleanup_smc_connection(smc_connection_t *conn) {
     conn->connection = 0;
   }
 
+  // Cleanup power source keys if they were initialised
+  if (!conn->limited_mode) {
+    cleanup_power_source_keys();
+  }
+
   // Reset error state
   conn->error.code = SMC_SUCCESS;
   conn->error.message = "Connection closed";
   conn->error.severity = 0;
-  conn->limited_mode = false;
 
   os_unfair_lock_unlock(&conn->lock);
 }
