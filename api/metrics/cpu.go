@@ -1,84 +1,77 @@
-// Package metrics provides the public interfaces for system metrics collection.
+// Package metrics provides interfaces for collecting system metrics.
 package metrics
 
 import (
-	"context"
+	"errors"
 	"time"
 
 	"github.com/sm-moshi/dmetrics-go/pkg/metrics/types"
 )
 
-// CPUMetrics defines the interface for CPU metrics collection.
+// Common errors returned by CPU metrics collection.
+var (
+	// ErrInvalidInterval is returned when a non-positive interval is provided for monitoring.
+	ErrInvalidInterval = errors.New("interval must be positive")
+
+	// ErrUnsupportedPlatform is returned when attempting to use platform-specific features
+	// that are not available on the current system (e.g., Apple Silicon features on Intel).
+	ErrUnsupportedPlatform = errors.New("operation not supported on this platform")
+
+	// ErrHardwareAccess is returned when hardware information cannot be accessed.
+	ErrHardwareAccess = errors.New("failed to access hardware information")
+)
+
+// CPUMetrics provides an interface for collecting CPU metrics.
 type CPUMetrics interface {
 	// GetFrequency returns the current CPU frequency in MHz.
-	// For Apple Silicon, this returns the base frequency.
-	// It returns an error if the frequency cannot be determined.
-	GetFrequency(ctx context.Context) (uint64, error)
+	// For Apple Silicon Macs, this returns the highest frequency among all cores.
+	// Returns ErrHardwareAccess if the frequency cannot be determined.
+	GetFrequency() (uint64, error)
 
-	// GetPerformanceFrequency returns the current performance core frequency in MHz.
-	// This is only available on Apple Silicon Macs.
-	// Returns 0 and nil error on Intel Macs.
-	GetPerformanceFrequency(ctx context.Context) (uint64, error)
+	// GetPerformanceFrequency returns the current frequency of performance cores in MHz.
+	// This method is only applicable to Apple Silicon Macs and will return 0 on Intel Macs.
+	// Returns ErrUnsupportedPlatform on Intel Macs.
+	// Returns ErrHardwareAccess if the frequency cannot be determined.
+	GetPerformanceFrequency() (uint64, error)
 
-	// GetEfficiencyFrequency returns the current efficiency core frequency in MHz.
-	// This is only available on Apple Silicon Macs.
-	// Returns 0 and nil error on Intel Macs.
-	GetEfficiencyFrequency(ctx context.Context) (uint64, error)
+	// GetEfficiencyFrequency returns the current frequency of efficiency cores in MHz.
+	// This method is only applicable to Apple Silicon Macs and will return 0 on Intel Macs.
+	// Returns ErrUnsupportedPlatform on Intel Macs.
+	// Returns ErrHardwareAccess if the frequency cannot be determined.
+	GetEfficiencyFrequency() (uint64, error)
 
-	// GetUsage returns the current CPU usage as a percentage (0-100).
-	// The interval parameter determines the sampling period.
-	// It returns an error if the usage cannot be determined.
-	GetUsage(ctx context.Context, interval time.Duration) (float64, error)
-
-	// GetCoreCount returns the number of physical CPU cores available.
-	// It returns an error if the core count cannot be determined.
-	GetCoreCount(ctx context.Context) (int, error)
+	// GetCoreCount returns the number of physical CPU cores.
+	// Returns ErrHardwareAccess if the core count cannot be determined.
+	GetCoreCount() (int, error)
 
 	// GetPerformanceCoreCount returns the number of performance cores.
-	// This is only available on Apple Silicon Macs.
-	// Returns 0 and nil error on Intel Macs.
-	GetPerformanceCoreCount(ctx context.Context) (int, error)
+	// This method is only applicable to Apple Silicon Macs and will return 0 on Intel Macs.
+	// Returns ErrUnsupportedPlatform on Intel Macs.
+	// Returns ErrHardwareAccess if the core count cannot be determined.
+	GetPerformanceCoreCount() (int, error)
 
 	// GetEfficiencyCoreCount returns the number of efficiency cores.
-	// This is only available on Apple Silicon Macs.
-	// Returns 0 and nil error on Intel Macs.
-	GetEfficiencyCoreCount(ctx context.Context) (int, error)
+	// This method is only applicable to Apple Silicon Macs and will return 0 on Intel Macs.
+	// Returns ErrUnsupportedPlatform on Intel Macs.
+	// Returns ErrHardwareAccess if the core count cannot be determined.
+	GetEfficiencyCoreCount() (int, error)
 
-	// GetStats returns detailed CPU statistics.
-	// It returns an error if the statistics cannot be determined.
-	GetStats(ctx context.Context) (*types.CPUStats, error)
+	// GetStats returns current CPU statistics.
+	// Returns ErrHardwareAccess if the statistics cannot be collected.
+	GetStats() (*types.CPUStats, error)
 
 	// GetPlatform returns information about the CPU platform.
-	// This includes details about the processor type and capabilities.
-	GetPlatform(ctx context.Context) (*types.CPUPlatform, error)
+	// Returns ErrHardwareAccess if the platform information cannot be determined.
+	GetPlatform() (*types.CPUPlatform, error)
 
-	// Watch starts monitoring CPU metrics and sends updates through the returned channel.
-	// The interval parameter determines how often updates are sent.
-	// The returned channel will be closed when:
-	// - The context is cancelled
-	// - An unrecoverable error occurs
-	// - The monitoring is stopped
-	//
-	// A zero or negative interval will result in an error.
-	Watch(ctx context.Context, interval time.Duration) (<-chan types.CPUStats, error)
+	// Watch starts monitoring CPU metrics and sends updates to the provided channel.
+	// The channel will be closed when monitoring stops or an error occurs.
+	// The interval parameter specifies how often to collect metrics.
+	// Returns ErrInvalidInterval if interval is not positive.
+	Watch(interval time.Duration) (<-chan *types.CPUStats, error)
 
-	// Shutdown cleans up resources used by the provider.
-	// This method should be called when the provider is no longer needed.
+	// Shutdown cleans up any resources used by the provider.
+	// This should be called when the provider is no longer needed.
 	// After calling Shutdown, other methods may return errors.
 	Shutdown() error
-}
-
-// CPUStats represents a snapshot of CPU statistics.
-type CPUStats struct {
-	// Timestamp when the stats were collected
-	Timestamp time.Time
-
-	// Frequency in MHz
-	Frequency float64
-
-	// Usage as percentage (0-100)
-	Usage float64
-
-	// Error if any occurred during collection
-	Error error
 }

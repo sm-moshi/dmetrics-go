@@ -86,6 +86,32 @@ func (p *Provider) GetCoreCount(ctx context.Context) (int, error) {
 	return stats.PhysicalCores, nil
 }
 
+// GetEfficiencyCoreCount returns the number of efficiency cores on Apple Silicon.
+// Returns 0 on Intel processors.
+func (p *Provider) GetEfficiencyCoreCount(ctx context.Context) (int, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
+	stats, err := getStats()
+	if err != nil {
+		return 0, err
+	}
+	return stats.EfficiencyCores, nil
+}
+
+// GetPerformanceCoreCount returns the number of performance cores on Apple Silicon.
+// Returns 0 on Intel processors.
+func (p *Provider) GetPerformanceCoreCount(ctx context.Context) (int, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
+	stats, err := getStats()
+	if err != nil {
+		return 0, err
+	}
+	return stats.PerformanceCores, nil
+}
+
 // Watch monitors CPU statistics and sends updates through the returned channel.
 // The interval parameter determines how often updates are sent.
 // The returned channel will be closed when the context is cancelled or an error occurs.
@@ -124,4 +150,10 @@ func (p *Provider) Watch(ctx context.Context, interval time.Duration) (<-chan ty
 	}()
 
 	return ch, nil
+}
+
+// Shutdown cleans up resources used by the provider.
+func (p *Provider) Shutdown() error {
+	cleanup()
+	return nil
 }

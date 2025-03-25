@@ -1,3 +1,7 @@
+// Package darwin provides CPU metrics collection for macOS systems.
+// It supports both Intel and Apple Silicon processors, providing detailed
+// information about CPU frequency, usage, core counts, and load averages.
+// The implementation uses native macOS APIs through cgo.
 package darwin
 
 /*
@@ -5,71 +9,17 @@ package darwin
 #cgo LDFLAGS: -F/System/Library/Frameworks -framework CoreFoundation
 
 #include <stdlib.h>
+#include <mach/mach_host.h>
+#include <mach/processor_info.h>
 #include "cpu.h"
-
-// Go-compatible type definitions
-typedef struct {
-	double user;
-	double system;
-	double idle;
-	double nice;
-} go_cpu_stats_t;
-
-typedef struct {
-	int is_apple_silicon;
-	char brand_string[128];
-	unsigned long long frequency;
-} go_cpu_platform_t;
-
-typedef struct {
-	double user;
-	double system;
-	double idle;
-	double nice;
-	int core_id;
-} go_cpu_core_stats_t;
-
-// Function declarations
-uint64_t get_cpu_freq(void);
-
-// Wrapper functions to avoid macro expansion issues
-static inline int go_get_cpu_count() {
-	return get_cpu_count();
-}
-
-static inline uint64_t go_get_cpu_freq() {
-	return get_cpu_freq();
-}
-
-static inline int go_get_cpu_stats(go_cpu_stats_t* stats) {
-	return get_cpu_stats((cpu_stats_t*)stats);
-}
-
-static inline int go_get_load_avg(double loadavg[3]) {
-	return get_load_avg(loadavg);
-}
-
-static inline int go_get_cpu_platform(go_cpu_platform_t* platform) {
-	return get_cpu_platform((cpu_platform_t*)platform);
-}
-
-static inline void go_cleanup_cpu_stats() {
-	cleanup_cpu_stats();
-}
-
-static inline int go_get_cpu_core_stats(go_cpu_core_stats_t* stats, int* num_cores) {
-	return get_cpu_core_stats((cpu_core_stats_t*)stats, num_cores);
-}
 */
 import "C"
 
 import (
-	"errors"
 	"fmt"
-	"runtime"
-	"sync"
 	"time"
 
+	"github.com/sm-moshi/dmetrics-go/api/metrics"
 	"github.com/sm-moshi/dmetrics-go/pkg/metrics/types"
 )
 
@@ -77,44 +27,56 @@ const (
 	maxCPUPercentage = 100.0
 )
 
-// platformInfo caches CPU platform information.
-var platformInfo struct {
-	sync.Once
-	platform C.go_cpu_platform_t
-	err      error
+// Error codes from C implementation for CPU metrics collection.
+const (
+	errCPUSuccess           = 0
+	errCPUHostProcessorInfo = -1
+	errCPUSysctl            = -2
+	errCPUMemory            = -3
+)
+
+// cpuError converts a C error code to a Go error with appropriate context.
+func cpuError(code int) error {
+	switch code {
+	case errCPUSuccess:
+		return nil
+	case errCPUHostProcessorInfo:
+		return fmt.Errorf("%w: failed to get host processor information", metrics.ErrHardwareAccess)
+	case errCPUSysctl:
+		return fmt.Errorf("%w: sysctl operation failed", metrics.ErrHardwareAccess)
+	case errCPUMemory:
+		return fmt.Errorf("%w: memory allocation failed", metrics.ErrHardwareAccess)
+	default:
+		return fmt.Errorf("%w: unknown error code %d", metrics.ErrHardwareAccess, code)
+	}
 }
 
-// getStats returns current CPU statistics.
+// getStats returns current CPU statistics including usage, frequency, and core information.
+// For Apple Silicon Macs, this includes both performance and efficiency core metrics.
+// Returns metrics.ErrHardwareAccess if hardware information cannot be accessed.
 func getStats() (*types.CPUStats, error) {
 	numCPUs := int(C.get_cpu_count())
-	cStats := make([]C.cpu_stats_t, numCPUs)
+	if numCPUs <= 0 {
+		return nil, fmt.Errorf("%w: failed to get CPU count", metrics.ErrHardwareAccess)
+	}
 
-	if err := C.get_cpu_stats(&cStats[0]); err != C.CPU_SUCCESS {
+	var cStats C.cpu_stats_t
+	if err := int(C.get_cpu_stats(&cStats)); err != errCPUSuccess {
 		return nil, cpuError(err)
 	}
 
-	// Calculate per-core usage
-	coreUsage := make([]float64, numCPUs)
-	var totalUsage float64
-	for i := 0; i < numCPUs; i++ {
-		active := maxCPUPercentage - float64(cStats[i].idle)
-		coreUsage[i] = active
-		totalUsage += active
-	}
-	totalUsage /= float64(numCPUs)
-
-	// Get platform info first
+	// Get platform info
 	var platform C.cpu_platform_t
-	if err := C.get_cpu_platform(&platform); err != C.CPU_SUCCESS {
+	if err := int(C.get_cpu_platform(&platform)); err != errCPUSuccess {
 		return nil, cpuError(err)
 	}
 
 	// Get frequencies
-	perfFreq := C.get_perf_core_freq()
-	effiFreq := C.get_effi_core_freq()
-	baseFreq := uint64(perfFreq)
+	perfFreq := uint64(C.get_perf_core_freq())
+	effiFreq := uint64(C.get_effi_core_freq())
+	baseFreq := perfFreq
 	if baseFreq == 0 {
-		baseFreq = uint64(effiFreq)
+		baseFreq = effiFreq
 	}
 
 	// Get core counts
@@ -122,98 +84,76 @@ func getStats() (*types.CPUStats, error) {
 	effiCores := int(C.get_effi_core_count())
 	totalCores := perfCores + effiCores
 	if totalCores == 0 {
-		totalCores = int(C.get_cpu_count())
+		totalCores = numCPUs
 	}
 
-	var loadAvg [3]C.double
-	if err := C.get_load_avg(&loadAvg[0]); err != C.CPU_SUCCESS {
+	var loadAvg [3]float64
+	if err := int(C.get_load_avg((*C.double)(&loadAvg[0]))); err != errCPUSuccess {
 		return nil, cpuError(err)
 	}
 
 	return &types.CPUStats{
-		User:             float64(cStats[0].user),
-		System:           float64(cStats[0].system),
-		Idle:             float64(cStats[0].idle),
-		Nice:             float64(cStats[0].nice),
+		User:             float64(cStats.user),
+		System:           float64(cStats.system),
+		Idle:             float64(cStats.idle),
+		Nice:             float64(cStats.nice),
 		FrequencyMHz:     baseFreq,
-		PerfFrequencyMHz: uint64(perfFreq),
-		EffiFrequencyMHz: uint64(effiFreq),
+		PerfFrequencyMHz: perfFreq,
+		EffiFrequencyMHz: effiFreq,
 		PhysicalCores:    totalCores,
 		PerformanceCores: perfCores,
 		EfficiencyCores:  effiCores,
-		TotalUsage:       totalUsage,
-		LoadAvg:          [3]float64{float64(loadAvg[0]), float64(loadAvg[1]), float64(loadAvg[2])},
+		TotalUsage:       maxCPUPercentage - float64(cStats.idle),
+		LoadAvg:          loadAvg,
 		Timestamp:        time.Now(),
-		CoreUsage:        coreUsage,
 	}, nil
 }
 
 // getFrequency returns the current CPU frequency in MHz.
+// For Apple Silicon Macs, this returns the highest frequency among all cores.
+// Returns metrics.ErrHardwareAccess if the frequency cannot be determined.
 func getFrequency() (uint64, error) {
 	// Try performance cores first
-	if freq := C.get_perf_core_freq(); freq > 0 {
-		return uint64(freq), nil
+	if freq := uint64(C.get_perf_core_freq()); freq > 0 {
+		return freq, nil
 	}
 
 	// Try efficiency cores next
-	if freq := C.get_effi_core_freq(); freq > 0 {
-		return uint64(freq), nil
+	if freq := uint64(C.get_effi_core_freq()); freq > 0 {
+		return freq, nil
 	}
 
 	// Fall back to traditional method
-	freq := C.get_cpu_freq()
+	freq := uint64(C.get_cpu_freq())
 	if freq == 0 {
-		return 0, errors.New("failed to detect CPU frequency")
+		return 0, fmt.Errorf("%w: failed to detect CPU frequency", metrics.ErrHardwareAccess)
 	}
-	return uint64(freq), nil
+	return freq, nil
 }
 
-// usage returns current CPU usage as a percentage.
+// usage returns current CPU usage as a percentage (0-100).
+// Returns metrics.ErrHardwareAccess if usage cannot be determined.
 func usage() (float64, error) {
 	stats, err := getStats()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to get CPU usage: %w", err)
 	}
-
 	return stats.TotalUsage, nil
 }
 
 // getLoadAvg returns the system load averages for the past 1, 5, and 15 minutes.
+// Returns metrics.ErrHardwareAccess if load averages cannot be determined.
 func getLoadAvg() ([3]float64, error) {
-	var loadAvg [3]C.double
-	ret := C.get_load_avg(&loadAvg[0])
-	if ret != 0 {
-		return [3]float64{}, errors.New("failed to get load average")
+	var loadAvg [3]float64
+	if err := int(C.get_load_avg((*C.double)(&loadAvg[0]))); err != errCPUSuccess {
+		return [3]float64{}, cpuError(err)
 	}
-
-	return [3]float64{
-		float64(loadAvg[0]),
-		float64(loadAvg[1]),
-		float64(loadAvg[2]),
-	}, nil
+	return loadAvg, nil
 }
 
 // cleanup releases any resources used by the CPU stats collector.
+// This function is safe to call multiple times and should be called
+// when the CPU metrics are no longer needed.
 func cleanup() {
-	C.go_cleanup_cpu_stats()
-}
-
-// initCleanup sets up the finalizer for cleaning up C resources.
-func initCleanup() {
-	runtime.SetFinalizer(new(bool), func(_ *bool) {
-		cleanup()
-	})
-}
-
-func cpuError(code C.int) error {
-	switch code {
-	case -3: // CPU_ERROR_MEMORY
-		return errors.New("memory allocation error")
-	case -2: // CPU_ERROR_SYSCTL
-		return errors.New("sysctl error")
-	case -1: // CPU_ERROR_HOST_PROCESSOR_INFO
-		return errors.New("host processor info error")
-	default:
-		return fmt.Errorf("unknown error: %d", code)
-	}
+	C.cleanup_cpu_stats()
 }

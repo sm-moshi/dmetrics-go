@@ -60,6 +60,20 @@
 {"type":"entity","name":"Current_Implementation","entityType":"CodeImplementation","observations":["Located in decode_smc_float function","Current implementation may have byte order issues","Needs to properly handle 12-bit integer and 4-bit fraction parts"],"createdAt":"2025-03-25T17:36:29.072Z","version":1}
 {"type":"entity","name":"Test_Case","entityType":"TestCase","observations":["Test value: 15.125","Expected hex: 0x0F02","First byte: 0x0F (15)","Second byte: 0x02 (2/16 = 0.125)"],"createdAt":"2025-03-25T17:36:29.072Z","version":1}
 {"type":"entity","name":"FPE2_Format","entityType":"DataFormat","observations":["14-bit integer part","2-bit fraction part","Total 16 bits","Test expects 20.25 but getting 1280.250000"],"createdAt":"2025-03-25T17:42:32.472Z","version":1}
+{"type":"entity","name":"power_stats_t","entityType":"struct","observations":["Basic C structure for power information","Contains is_present, is_charging, percentage fields","Used for C-Go data transfer"],"createdAt":"2025-03-25T19:14:33.039Z","version":1}
+{"type":"entity","name":"PowerStats","entityType":"struct","observations":["Go structure mirroring power_stats_t","Provides clean Go API for power information","Used in public interface"],"createdAt":"2025-03-25T19:14:33.041Z","version":1}
+{"type":"entity","name":"get_power_source_info","entityType":"function","observations":["C function using IOPowerSources API","Returns basic power information","No thread synchronization needed"],"createdAt":"2025-03-25T19:14:33.041Z","version":1}
+{"type":"entity","name":"getStats","entityType":"function","observations":["Go wrapper for get_power_source_info","Handles error cases and type conversion","Returns PowerStats struct"],"createdAt":"2025-03-25T19:14:33.041Z","version":1}
+{"type":"entity","name":"PowerSourceImplementation","entityType":"Feature","observations":["Implemented basic power source monitoring using IOPowerSources API","Removed SMC dependency for v0.1","Added comprehensive documentation","Implemented thread-safe access","Added proper context handling","Added test coverage"],"createdAt":"2025-03-25T19:31:08.174Z","version":1}
+{"type":"entity","name":"PowerMetricsV0.1","entityType":"Project","observations":["Simplified implementation using IOPowerSources API","Removed SMC dependency for better stability","Core functionality includes power source presence, charging state, and percentage","Thread-safe implementation with proper context handling","Comprehensive test coverage added","Documentation in British English completed","Ready for PR to develop branch"],"createdAt":"2025-03-25T19:43:16.913Z","version":1}
+{"type":"entity","name":"TestSuite","entityType":"Tests","observations":["All unit tests passing","Thread safety tests implemented","Context cancellation tests added","Error handling tests completed"],"createdAt":"2025-03-25T19:43:16.915Z","version":1}
+{"type":"entity","name":"FutureWork","entityType":"Roadmap","observations":["SMC-based metrics planned for v0.2","Cycle count monitoring deferred to v0.2","Detailed power consumption metrics planned for v0.2","Battery health monitoring scheduled for v0.2"],"createdAt":"2025-03-25T19:43:16.915Z","version":1}
+{"type":"entity","name":"CPU_Metrics","entityType":"Component","observations":["Provides CPU statistics and monitoring","Supports frequency, usage, and core count metrics","Needs Apple Silicon-specific features","Currently has some linter errors in impl.go"],"createdAt":"2025-03-25T20:33:53.701Z","version":1}
+{"type":"entity","name":"Power_Metrics","entityType":"Component","observations":["Provides power and battery statistics","Supports power source detection","Needs better error handling for battery absence","Requires cleanup of unimplemented methods"],"createdAt":"2025-03-25T20:33:53.703Z","version":1}
+{"type":"entity","name":"CPU Package","entityType":"Package","observations":["Located in internal/cpu and api/metrics","Provides CPU metrics collection for macOS","Supports both Intel and Apple Silicon"],"createdAt":"2025-03-25T20:40:10.137Z","version":1}
+{"type":"entity","name":"CPU API","entityType":"Interface","observations":["Defined in api/metrics/cpu.go","Contains CPUMetrics interface","Has redundant CPUStats struct","Needs better error documentation"],"createdAt":"2025-03-25T20:40:10.140Z","version":1}
+{"type":"entity","name":"CPU Implementation","entityType":"Implementation","observations":["Located in internal/cpu/darwin/impl.go","Uses cgo for native API calls","Handles platform-specific features","Needs thread-safety improvements"],"createdAt":"2025-03-25T20:40:10.140Z","version":1}
+{"type":"entity","name":"CPU Types","entityType":"Types","observations":["Defined in pkg/metrics/types","Contains CPUStats and CPUPlatform structs","Well-documented fields","Supports Apple Silicon specific fields"],"createdAt":"2025-03-25T20:40:10.140Z","version":1}
 {"type":"relation","from":"dmetrics-go","to":"cpu_package","relationType":"contains","createdAt":"2025-03-24T14:39:01.275Z","version":1}
 {"type":"relation","from":"cpu_package","to":"cpu_implementation","relationType":"implements","createdAt":"2025-03-24T14:39:01.275Z","version":1}
 {"type":"relation","from":"cpu_package","to":"test_suite","relationType":"verified by","createdAt":"2025-03-24T14:39:01.275Z","version":1}
@@ -144,3 +158,20 @@
 {"type":"relation","from":"FPC4_Format","to":"Current_Implementation","relationType":"defines requirements for","createdAt":"2025-03-25T17:36:34.369Z","version":1}
 {"type":"relation","from":"Test_Case","to":"Current_Implementation","relationType":"validates","createdAt":"2025-03-25T17:36:34.369Z","version":1}
 {"type":"relation","from":"FPC4_Format","to":"Test_Case","relationType":"specifies format for","createdAt":"2025-03-25T17:36:34.369Z","version":1}
+{"type":"relation","from":"getStats","to":"get_power_source_info","relationType":"calls","createdAt":"2025-03-25T19:14:36.459Z","version":1}
+{"type":"relation","from":"getStats","to":"PowerStats","relationType":"returns","createdAt":"2025-03-25T19:14:36.459Z","version":1}
+{"type":"relation","from":"get_power_source_info","to":"power_stats_t","relationType":"uses","createdAt":"2025-03-25T19:14:36.459Z","version":1}
+{"type":"relation","from":"PowerStats","to":"power_stats_t","relationType":"mirrors","createdAt":"2025-03-25T19:14:36.459Z","version":1}
+{"type":"relation","from":"PowerMetricsV0.1","to":"PowerStats","relationType":"implements","createdAt":"2025-03-25T19:43:25.193Z","version":1}
+{"type":"relation","from":"PowerMetricsV0.1","to":"Documentation","relationType":"includes","createdAt":"2025-03-25T19:43:25.193Z","version":1}
+{"type":"relation","from":"PowerMetricsV0.1","to":"TestSuite","relationType":"verifiedBy","createdAt":"2025-03-25T19:43:25.193Z","version":1}
+{"type":"relation","from":"PowerMetricsV0.1","to":"FutureWork","relationType":"plansFuture","createdAt":"2025-03-25T19:43:25.193Z","version":1}
+{"type":"relation","from":"Documentation","to":"FutureWork","relationType":"describes","createdAt":"2025-03-25T19:43:25.193Z","version":1}
+{"type":"relation","from":"dmetrics-go","to":"CPU_Metrics","relationType":"contains","createdAt":"2025-03-25T20:33:56.236Z","version":1}
+{"type":"relation","from":"dmetrics-go","to":"Power_Metrics","relationType":"contains","createdAt":"2025-03-25T20:33:56.236Z","version":1}
+{"type":"relation","from":"CPU Package","to":"CPU API","relationType":"contains","createdAt":"2025-03-25T20:40:16.889Z","version":1}
+{"type":"relation","from":"CPU Package","to":"CPU Implementation","relationType":"contains","createdAt":"2025-03-25T20:40:16.889Z","version":1}
+{"type":"relation","from":"CPU Package","to":"CPU Types","relationType":"uses","createdAt":"2025-03-25T20:40:16.889Z","version":1}
+{"type":"relation","from":"CPU API","to":"CPU Types","relationType":"depends on","createdAt":"2025-03-25T20:40:16.889Z","version":1}
+{"type":"relation","from":"CPU Implementation","to":"CPU Types","relationType":"implements","createdAt":"2025-03-25T20:40:16.889Z","version":1}
+{"type":"relation","from":"CPU Implementation","to":"CPU API","relationType":"implements","createdAt":"2025-03-25T20:40:16.889Z","version":1}
