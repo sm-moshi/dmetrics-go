@@ -31,10 +31,17 @@
 // All public methods are thread-safe, protected by RWMutex.
 // The C-level SMC connection is maintained globally with appropriate synchronisation.
 //
+// Permission Handling:
+// The implementation gracefully handles limited permissions:
+// - Basic power metrics (source type, battery percentage) work without elevated privileges
+// - Advanced metrics (power consumption, temperatures) may be estimated or unavailable
+// - All operations remain thread-safe regardless of permission level
+//
 // Error Handling:
 // - Returns types.ErrNoBattery when battery operations are attempted without a battery present
 // - Returns types.ErrInvalidInterval for invalid monitoring intervals
 // - Returns descriptive errors for IOKit and SMC operation failures
+// - Provides clear feedback when operating with limited permissions
 //
 // Example Usage:
 //

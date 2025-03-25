@@ -5,8 +5,6 @@ package darwin
 
 import (
 	"errors"
-	"math/rand"
-	"sync"
 	"testing"
 	"time"
 
@@ -14,11 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sm-moshi/dmetrics-go/pkg/metrics/types"
-)
-
-var (
-	rngMu sync.Mutex
-	rng   = rand.New(rand.NewSource(time.Now().UnixNano()))
 )
 
 func TestGetStatsImpl(t *testing.T) {

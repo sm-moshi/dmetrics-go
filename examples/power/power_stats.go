@@ -1,3 +1,6 @@
+// Package main provides an example of using the power metrics functionality
+// from the dmetrics-go library. It demonstrates how to monitor power source,
+// battery status, and power consumption in real-time.
 package main
 
 import (
@@ -12,7 +15,12 @@ import (
 	"github.com/sm-moshi/dmetrics-go/pkg/metrics/types"
 )
 
-func main() {
+const (
+	// updateInterval is the time between power metric updates.
+	updateInterval = 5 * time.Second
+)
+
+func run() error {
 	// Create a context that can be cancelled
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -22,6 +30,7 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt)
 	go func() {
 		<-sigChan
+		fmt.Println("\nShutting down...")
 		cancel()
 	}()
 
@@ -31,7 +40,7 @@ func main() {
 	// Get current power stats
 	stats, err := provider.GetStats(ctx)
 	if err != nil {
-		log.Fatalf("Failed to get power stats: %v", err)
+		return fmt.Errorf("failed to get power stats: %w", err)
 	}
 
 	// Print current power information
@@ -47,9 +56,9 @@ func main() {
 
 	// Monitor power metrics
 	fmt.Println("\nMonitoring power metrics (Ctrl+C to stop)...")
-	ch, err := provider.Watch(ctx, 5*time.Second)
+	ch, err := provider.Watch(ctx, updateInterval)
 	if err != nil {
-		log.Fatalf("Failed to start monitoring: %v", err)
+		return fmt.Errorf("failed to start monitoring: %w", err)
 	}
 
 	// Print power metrics updates
@@ -68,5 +77,15 @@ func main() {
 			}
 		}
 		fmt.Println("=================")
+	}
+
+	fmt.Println("Monitoring stopped.")
+	return nil
+}
+
+func main() {
+	if err := run(); err != nil {
+		log.Printf("Error: %v", err)
+		os.Exit(1)
 	}
 }

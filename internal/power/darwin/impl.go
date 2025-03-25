@@ -26,23 +26,25 @@ import (
 	"github.com/sm-moshi/dmetrics-go/pkg/metrics/types"
 )
 
-const (
-	// batteryHealthPercentMultiplier is used to convert capacity ratio to percentage.
-	batteryHealthPercentMultiplier = 100
+// batteryHealthPercentMultiplier converts capacity ratios to percentages.
+const batteryHealthPercentMultiplier = 100.0
 
-	// batteryHealthGoodThreshold is the minimum percentage for good health status.
-	batteryHealthGoodThreshold = 80
+// batteryHealthGoodThreshold defines the minimum percentage for good health status.
+// Batteries above this threshold are considered to be in good condition.
+const batteryHealthGoodThreshold = 80.0
 
-	// batteryHealthFairThreshold is the minimum percentage for fair health status.
-	batteryHealthFairThreshold = 50
-)
+// batteryHealthFairThreshold defines the minimum percentage for fair health status.
+// Batteries below this threshold but above poor may need replacement soon.
+const batteryHealthFairThreshold = 50.0
 
 var (
 	smcMu          sync.RWMutex
 	smcInitialized bool
 )
 
-// getStats returns the current power and battery statistics.
+// getStats retrieves comprehensive power and battery statistics.
+// It aggregates data from both IOKit and SMC to provide a complete
+// picture of the system's power state.
 func getStats() (*types.PowerStats, error) {
 	smcMu.RLock()
 	defer smcMu.RUnlock()
@@ -101,17 +103,20 @@ func getStats() (*types.PowerStats, error) {
 	return stats, nil
 }
 
-// Initialise SMC on package init.
-func init() {
+// initSMC establishes and validates the SMC connection.
+// This connection is crucial for accessing low-level power management features.
+// Returns true if successful, false if the SMC is unavailable.
+func initSMC() bool {
 	smcMu.Lock()
 	defer smcMu.Unlock()
 
 	if ok := C.init_smc(); !ok {
 		// Log error but don't fail - some metrics may still work
 		fmt.Printf("Warning: Failed to initialise SMC connection\n")
-		return
+		return false
 	}
 	smcInitialized = true
+	return true
 }
 
 // Helper functions that use getStats().
