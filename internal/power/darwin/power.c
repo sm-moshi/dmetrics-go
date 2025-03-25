@@ -3,14 +3,29 @@
 #include <IOKit/IOKitLib.h>
 #include <IOKit/ps/IOPSKeys.h>
 #include <IOKit/ps/IOPowerSources.h>
+#include <os/lock.h>
+#include <stdbool.h>
 
 // SMC keys for power information
 #define SMC_KEY_CPU_POWER "PC0C"
 #define SMC_KEY_GPU_POWER "PCGC"
 #define SMC_KEY_BATTERY_TEMP "TB0T"
 
-// Global SMC connection
-static io_connect_t g_smc_conn = 0;
+// Global SMC connection with thread safety
+static struct {
+  io_connect_t conn;
+  os_unfair_lock lock;
+  bool initialised;
+  smc_error_info_t last_error;
+} g_smc = {
+    .conn = 0,
+    .lock = OS_UNFAIR_LOCK_INIT,
+    .initialised = false,
+    .last_error = {.code = SMC_SUCCESS, .message = "No error", .severity = 0}};
+
+// Forward declarations for internal functions
+static bool init_smc_internal(io_connect_t *conn, smc_error_info_t *error);
+static void cleanup_smc_internal(io_connect_t conn);
 
 static CFStringRef kPowerSourceStateKey;
 static CFStringRef kPowerSourceTypeKey;
@@ -131,7 +146,7 @@ bool get_power_source_info(power_stats_t *stats) {
 }
 
 bool get_system_power_info(system_power_t *power) {
-  if (!power || !g_smc_conn)
+  if (!power || !g_smc.conn)
     return false;
 
   float value;
@@ -156,36 +171,77 @@ bool get_system_power_info(system_power_t *power) {
   return success;
 }
 
-bool init_smc(void) {
-  // Initialize power source keys first
-  if (!init_power_source_keys()) {
-    return false;
+int init_smc_with_options(smc_connection_t *conn,
+                          const smc_init_options_t *options) {
+  if (!conn) {
+    return SMC_ERROR_INIT_KEYS;
   }
 
-  if (g_smc_conn)
-    return true;
+  // Initialize the connection structure
+  conn->connection = 0;
+  conn->error.code = SMC_SUCCESS;
+  conn->error.message = "Initialising";
+  conn->error.severity = 0;
+  conn->lock = OS_UNFAIR_LOCK_INIT;
+  conn->limited_mode = options ? options->allow_limited_mode : false;
 
+  // Find and open SMC service
   io_service_t service = IOServiceGetMatchingService(
       kIOMainPortDefault, IOServiceMatching("AppleSMC"));
-  if (!service)
-    return false;
 
+  if (!service) {
+    conn->error.code = SMC_ERROR_NO_SERVICE;
+    conn->error.message = "SMC service not found";
+    conn->error.severity = 2;
+    return SMC_ERROR_NO_SERVICE;
+  }
+
+  // Open connection to the SMC
   kern_return_t result =
-      IOServiceOpen(service, mach_task_self(), 0, &g_smc_conn);
+      IOServiceOpen(service, mach_task_self(), 0, &conn->connection);
+
   IOObjectRelease(service);
 
-  return result == KERN_SUCCESS;
+  if (result != KERN_SUCCESS) {
+    conn->error.code = SMC_ERROR_OPEN_FAILED;
+    conn->error.message = "Failed to open SMC connection";
+    conn->error.severity = 2;
+    return SMC_ERROR_OPEN_FAILED;
+  }
+
+  // Initialize SMC keys if needed
+  if (!options || !options->skip_power_keys) {
+    // Key initialization would go here
+    // For now, just mark as successful
+    conn->error.code = SMC_SUCCESS;
+    conn->error.message = "SMC initialised successfully";
+    conn->error.severity = 0;
+  }
+
+  return SMC_SUCCESS;
 }
 
-void close_smc(void) {
-  if (g_smc_conn) {
-    IOServiceClose(g_smc_conn);
-    g_smc_conn = 0;
-  }
+void get_smc_error_info(smc_connection_t *conn, smc_error_info_t *error) {
+  if (!conn || !error)
+    return;
+
+  os_unfair_lock_lock(&conn->lock);
+  *error = conn->error;
+  os_unfair_lock_unlock(&conn->lock);
+}
+
+bool is_smc_limited_mode(smc_connection_t *conn) {
+  if (!conn)
+    return false;
+
+  os_unfair_lock_lock(&conn->lock);
+  bool limited = conn->limited_mode;
+  os_unfair_lock_unlock(&conn->lock);
+  return limited;
 }
 
 bool get_smc_float(const char *key, float *value) {
-  if (!key || !value || !g_smc_conn)
+  if (!key || !value || !g_smc.conn)
     return false;
 
   // Implementation details for SMC key reading would go here

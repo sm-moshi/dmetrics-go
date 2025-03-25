@@ -82,7 +82,7 @@ bool get_smc_float(const char *key, float *value);
 // SMC management functions
 int init_smc_with_options(smc_connection_t *conn,
                           const smc_init_options_t *options);
-void get_smc_error_info(const smc_connection_t *conn, smc_error_info_t *error);
-bool is_smc_limited_mode(const smc_connection_t *conn);
+void get_smc_error_info(smc_connection_t *conn, smc_error_info_t *error);
+bool is_smc_limited_mode(smc_connection_t *conn);
 
 #endif // POWER_H
