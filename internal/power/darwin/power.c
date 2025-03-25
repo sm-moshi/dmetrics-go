@@ -5,11 +5,46 @@
 #include <IOKit/ps/IOPowerSources.h>
 #include <os/lock.h>
 #include <stdbool.h>
+#include <string.h>
 
 // SMC keys for power information
 #define SMC_KEY_CPU_POWER "PC0C"
 #define SMC_KEY_GPU_POWER "PCGC"
 #define SMC_KEY_BATTERY_TEMP "TB0T"
+
+// SMC protocol definitions
+#define SMC_CMD_READ_KEY 0x5
+#define SMC_CMD_READ_INDEX 0x8
+#define SMC_CMD_READ_KEYINFO 0x9
+
+// SMC data types (as uint32_t constants)
+#define SMC_TYPE_FP1F 0x66703166 // 'fp1f' in hex
+#define SMC_TYPE_FP4C 0x66703463 // 'fp4c' in hex
+#define SMC_TYPE_FP5B 0x6670356B // 'fp5b' in hex
+#define SMC_TYPE_FP6A 0x66703661 // 'fp6a' in hex
+#define SMC_TYPE_FP79 0x66703739 // 'fp79' in hex
+#define SMC_TYPE_FP88 0x66703838 // 'fp88' in hex
+#define SMC_TYPE_FPA6 0x66706136 // 'fpa6' in hex
+#define SMC_TYPE_FPC4 0x66706334 // 'fpc4' in hex
+#define SMC_TYPE_FPE2 0x66706532 // 'fpe2' in hex
+
+// SMC key info struct
+typedef struct {
+  uint32_t dataSize;
+  uint32_t dataType;
+  uint8_t dataAttributes;
+} smc_key_info_t;
+
+// SMC command struct
+typedef struct {
+  uint32_t key;
+  uint32_t versioning;
+  uint8_t cmd;
+  uint32_t result;
+  uint32_t unknown;
+  uint8_t data[32];
+  uint32_t keyInfo;
+} smc_cmd_t;
 
 // Global SMC connection with thread safety
 static struct {
@@ -240,13 +275,78 @@ bool is_smc_limited_mode(smc_connection_t *conn) {
   return limited;
 }
 
+static bool read_smc_key(io_connect_t conn, const char *key_str,
+                         smc_cmd_t *cmd) {
+  if (!key_str || !cmd)
+    return false;
+
+  // Convert key string to uint32_t
+  uint32_t key =
+      (key_str[0] << 24) | (key_str[1] << 16) | (key_str[2] << 8) | key_str[3];
+
+  // Get key info first
+  smc_key_info_t key_info;
+  memset(&key_info, 0, sizeof(key_info));
+
+  cmd->key = key;
+  cmd->cmd = SMC_CMD_READ_KEYINFO;
+  cmd->keyInfo = 0;
+
+  size_t size = sizeof(smc_cmd_t);
+  kern_return_t result =
+      IOConnectCallStructMethod(conn, 2, cmd, sizeof(smc_cmd_t), cmd, &size);
+
+  if (result != KERN_SUCCESS)
+    return false;
+
+  // Now read the actual key value
+  cmd->cmd = SMC_CMD_READ_KEY;
+  cmd->keyInfo = 0;
+  memset(cmd->data, 0, sizeof(cmd->data));
+
+  result =
+      IOConnectCallStructMethod(conn, 2, cmd, sizeof(smc_cmd_t), cmd, &size);
+
+  return result == KERN_SUCCESS;
+}
+
+static float decode_smc_float(const smc_cmd_t *cmd) {
+  if (!cmd)
+    return 0.0f;
+
+  uint32_t data_type = cmd->keyInfo & 0xFFFFFFFF;
+  const uint8_t *data = cmd->data;
+
+  switch (data_type) {
+  case SMC_TYPE_FP1F: // 1-bit exponent, 15-bit fraction
+    return (float)data[0] + ((float)data[1] / (1 << 15));
+
+  case SMC_TYPE_FP4C: // 4-bit exponent, 12-bit fraction
+    return (float)((data[0] << 8 | data[1]) >> 4) +
+           ((float)(data[1] & 0xF) / (1 << 12));
+
+  case SMC_TYPE_FP88: // 8-bit integer, 8-bit fraction
+    return (float)data[0] + ((float)data[1] / (1 << 8));
+
+  default:
+    return 0.0f; // Unsupported type
+  }
+}
+
 bool get_smc_float(const char *key, float *value) {
   if (!key || !value || !g_smc.conn)
     return false;
 
-  // Implementation details for SMC key reading would go here
-  // This requires detailed knowledge of the SMC protocol
-  // For brevity, returning a placeholder value
-  *value = 0.0;
-  return true;
+  os_unfair_lock_lock(&g_smc.lock);
+
+  smc_cmd_t cmd;
+  memset(&cmd, 0, sizeof(cmd));
+
+  bool success = read_smc_key(g_smc.conn, key, &cmd);
+  if (success) {
+    *value = decode_smc_float(&cmd);
+  }
+
+  os_unfair_lock_unlock(&g_smc.lock);
+  return success;
 }
