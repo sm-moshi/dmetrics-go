@@ -1,60 +1,87 @@
 /*
 Package dmetrics provides a comprehensive system metrics collection library for macOS.
 
-The library enables real-time monitoring of various system metrics:
-  - CPU utilisation, frequency (where available), and load averages
-  - Memory usage and virtual memory statistics
-  - GPU metrics and VRAM utilisation
-  - Temperature sensors and fan speeds
-  - Power source and battery information
-  - Process statistics
-  - Network interface metrics
+Current Status (v0.1):
+  - CPU metrics: ✓ Implemented and tested
+  - Memory metrics: Planned
+  - GPU metrics: Planned
+  - Temperature sensors: Planned
+  - Power metrics: Planned
+  - Process metrics: Planned
+  - Network metrics: Planned
+
+The library enables real-time monitoring of various system metrics, with the CPU
+package being the first fully implemented component:
+
+CPU Metrics (Available Now):
+  - Total and per-core CPU utilisation
+  - CPU frequency detection (may require elevated permissions)
+  - Load averages and core counts
+  - Apple Silicon specific metrics (P-core/E-core frequencies)
+  - Thread-safe concurrent monitoring
 
 Example usage:
 
 	package main
 
 	import (
-	    "context"
 	    "fmt"
 	    "log"
+	    "time"
 	    "github.com/sm-moshi/dmetrics-go/internal/cpu"
-	    "github.com/sm-moshi/dmetrics-go/pkg/metrics/types"
 	)
 
 	func main() {
 	    provider := cpu.NewProvider()
-	    stats, err := provider.GetStats(context.Background())
+	    defer provider.Shutdown()
+
+	    // Get current CPU stats
+	    stats, err := provider.GetStats()
 	    if err != nil {
 	        log.Fatal(err)
 	    }
 	    fmt.Printf("CPU Usage: %.2f%%\n", stats.TotalUsage)
-	    if stats.FrequencyMHz > 0 {
-	        fmt.Printf("Frequency: %d MHz\n", stats.FrequencyMHz)
-	    } else {
-	        fmt.Println("CPU frequency detection not available")
+
+	    // Monitor CPU metrics
+	    ch, err := provider.Watch(time.Second)
+	    if err != nil {
+	        log.Fatal(err)
+	    }
+	    for stats := range ch {
+	        fmt.Printf("CPU Usage: %.2f%%\n", stats.TotalUsage)
+	        if stats.FrequencyMHz > 0 {
+	            fmt.Printf("Frequency: %d MHz\n", stats.FrequencyMHz)
+	        }
 	    }
 	}
 
 The library interfaces with macOS system calls and frameworks through cgo:
   - sysctl: Core system statistics and configuration
-  - IOKit: GPU metrics and power management
-  - SMC: Temperature monitoring and fan control
-  - libproc: Process monitoring and statistics
+  - host_processor_info: CPU utilisation tracking
+  - mach_host: System-wide metrics collection
+  - IOKit: Hardware information and power management (planned)
+  - SMC: Temperature and fan control (planned)
+  - libproc: Process monitoring (planned)
 
-All packages are designed for thread safety and efficiency, with proper resource
-management and error handling. The implementation supports both Intel and
-Apple Silicon Macs, with architecture-specific optimisations where available.
+Known Limitations:
+  - CPU frequency detection may require elevated permissions (sudo)
+  - Some sysctl operations may fail without proper permissions
+  - Apple Silicon specific features require macOS 11.0 or later
 
 Package Organisation:
   - api/metrics: Public interfaces for metrics collection
-  - internal/cpu: Platform-specific CPU metrics implementation
-  - internal/gpu: Platform-specific GPU metrics implementation (TODO)
-  - internal/power: Platform-specific power metrics implementation (TODO)
-  - internal/temperature: Platform-specific temperature metrics implementation (TODO)
-  - internal/memory: Platform-specific memory metrics implementation (TODO)
-  - internal/network: Platform-specific network metrics implementation (TODO)
-  - internal/process: Platform-specific process metrics implementation (TODO)
+  - internal/cpu: ✓ CPU metrics implementation (complete)
+  - internal/gpu: Platform-specific GPU metrics (planned)
+  - internal/power: Platform-specific power metrics (planned)
+  - internal/temperature: Platform-specific temperature metrics (planned)
+  - internal/memory: Platform-specific memory metrics (planned)
+  - internal/network: Platform-specific network metrics (planned)
+  - internal/process: Platform-specific process metrics (planned)
   - pkg/metrics/types: Common type definitions for all metrics
+
+Thread Safety:
+All implemented packages are designed for thread safety and efficiency, with proper
+resource management and error handling. The implementation supports both Intel and
+Apple Silicon Macs, with architecture-specific optimisations where available.
 */
 package dmetrics

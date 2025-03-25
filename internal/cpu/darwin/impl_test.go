@@ -163,3 +163,66 @@ func TestGetStatsConcurrent(t *testing.T) {
 		assert.NoError(t, err)
 	}
 }
+
+func TestCPUCoreUsage(t *testing.T) {
+	// Initialize CPU stats
+	initCleanup()
+	defer cleanup()
+
+	// Get initial stats and wait for delta
+	stats, err := getStats()
+	if err != nil {
+		t.Fatalf("Failed to get initial stats: %v", err)
+	}
+	time.Sleep(time.Second)
+
+	// Get stats again for delta calculation
+	stats, err = getStats()
+	if err != nil {
+		t.Fatalf("Failed to get stats: %v", err)
+	}
+
+	// Verify core count matches
+	if len(stats.CoreUsage) != stats.PhysicalCores {
+		t.Errorf("Core usage array length (%d) doesn't match physical cores (%d)",
+			len(stats.CoreUsage), stats.PhysicalCores)
+	}
+
+	// Verify each core's usage is within valid range
+	for i, usage := range stats.CoreUsage {
+		if usage < 0 || usage > 100 {
+			t.Errorf("Core %d usage %.2f%% outside valid range [0,100]", i, usage)
+		}
+	}
+
+	// Calculate average core usage
+	var totalCoreUsage float64
+	for _, usage := range stats.CoreUsage {
+		totalCoreUsage += usage
+	}
+	avgCoreUsage := totalCoreUsage / float64(len(stats.CoreUsage))
+
+	// Verify average core usage is within reasonable range of total usage
+	// Allow for some variance due to sampling times
+	const maxVariance = 10.0 // Maximum allowed difference in percentage points
+	if diff := abs(avgCoreUsage - stats.TotalUsage); diff > maxVariance {
+		t.Errorf("Average core usage (%.2f%%) differs significantly from total usage (%.2f%%)",
+			avgCoreUsage, stats.TotalUsage)
+	}
+
+	// Verify core type counts for Apple Silicon
+	if stats.PerformanceCores > 0 || stats.EfficiencyCores > 0 {
+		if stats.PerformanceCores+stats.EfficiencyCores != stats.PhysicalCores {
+			t.Errorf("P-cores (%d) + E-cores (%d) != Physical cores (%d)",
+				stats.PerformanceCores, stats.EfficiencyCores, stats.PhysicalCores)
+		}
+	}
+}
+
+// Helper function for absolute value
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}

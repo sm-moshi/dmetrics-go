@@ -65,6 +65,27 @@ func getStats() (*types.CPUStats, error) {
 		return nil, cpuError(err)
 	}
 
+	// Get per-core stats
+	coreStats := make([]C.cpu_core_stats_t, numCPUs)
+	var numCores C.int
+	if err := int(C.get_cpu_core_stats(&coreStats[0], &numCores)); err != errCPUSuccess {
+		return nil, cpuError(err)
+	}
+
+	// Convert core stats to usage percentages
+	coreUsage := make([]float64, numCPUs)
+	for i := 0; i < numCPUs; i++ {
+		// Calculate active time percentage (user + system + nice)
+		coreUsage[i] = float64(coreStats[i].user + coreStats[i].system + coreStats[i].nice)
+	}
+
+	// Calculate total CPU usage as average of core usages
+	var totalUsage float64
+	for _, usage := range coreUsage {
+		totalUsage += usage
+	}
+	totalUsage /= float64(numCPUs)
+
 	// Get platform info
 	var platform C.cpu_platform_t
 	if err := int(C.get_cpu_platform(&platform)); err != errCPUSuccess {
@@ -103,7 +124,8 @@ func getStats() (*types.CPUStats, error) {
 		PhysicalCores:    totalCores,
 		PerformanceCores: perfCores,
 		EfficiencyCores:  effiCores,
-		TotalUsage:       maxCPUPercentage - float64(cStats.idle),
+		CoreUsage:        coreUsage,
+		TotalUsage:       totalUsage,
 		LoadAvg:          loadAvg,
 		Timestamp:        time.Now(),
 	}, nil
@@ -149,6 +171,13 @@ func getLoadAvg() ([3]float64, error) {
 		return [3]float64{}, cpuError(err)
 	}
 	return loadAvg, nil
+}
+
+// initCleanup initializes the CPU stats collector.
+// This function must be called before any other CPU metrics functions.
+// It is safe to call this function multiple times.
+func initCleanup() {
+	C.init_cpu_stats()
 }
 
 // cleanup releases any resources used by the CPU stats collector.

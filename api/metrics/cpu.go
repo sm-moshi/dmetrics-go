@@ -23,6 +23,7 @@
 package metrics
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -136,14 +137,20 @@ type CPUMetrics interface {
 	GetPlatform() (*types.CPUPlatform, error)
 
 	// Watch starts monitoring CPU metrics and sends updates to the provided channel.
-	// The channel will be closed when monitoring stops or an error occurs.
+	// The context can be used to stop monitoring. When the context is cancelled,
+	// the channel will be closed after any pending updates are sent.
+	//
+	// The returned channel is buffered with a capacity of 1 to prevent blocking
+	// when the consumer is slower than the update interval. If a consumer cannot
+	// keep up with updates, the oldest update will be dropped in favor of the newest.
+	//
 	// This method is safe for concurrent use, but only one Watch call should be active
 	// at a time. Additional calls will return an error.
 	// Returns:
 	//   - Channel receiving CPU statistics updates
 	//   - ErrInvalidInterval if interval is not positive
 	//   - ErrShutdown if the provider has been shut down
-	Watch(interval time.Duration) (<-chan *types.CPUStats, error)
+	Watch(ctx context.Context, interval time.Duration) (<-chan *types.CPUStats, error)
 
 	// Shutdown cleans up any resources used by the provider.
 	// This method is safe for concurrent use but should only be called once.
