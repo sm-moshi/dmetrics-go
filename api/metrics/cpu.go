@@ -1,4 +1,25 @@
 // Package metrics provides interfaces for collecting system metrics.
+//
+// Example usage:
+//
+//	provider := cpu.NewProvider()
+//	defer provider.Shutdown()
+//
+//	// Get current CPU stats
+//	stats, err := provider.GetStats()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Printf("CPU Usage: %.2f%%\n", stats.Usage)
+//
+//	// Monitor CPU metrics
+//	ch, err := provider.Watch(time.Second)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	for stats := range ch {
+//	    fmt.Printf("CPU Usage: %.2f%%\n", stats.Usage)
+//	}
 package metrics
 
 import (
@@ -8,7 +29,7 @@ import (
 	"github.com/sm-moshi/dmetrics-go/pkg/metrics/types"
 )
 
-// Common errors returned by CPU metrics collection.
+// Common errors that may be returned by CPU metrics collection.
 var (
 	// ErrInvalidInterval is returned when a non-positive interval is provided for monitoring.
 	ErrInvalidInterval = errors.New("interval must be positive")
@@ -19,59 +40,113 @@ var (
 
 	// ErrHardwareAccess is returned when hardware information cannot be accessed.
 	ErrHardwareAccess = errors.New("failed to access hardware information")
+
+	// ErrShutdown is returned when attempting to use a provider that has been shut down.
+	ErrShutdown = errors.New("provider has been shut down")
 )
 
 // CPUMetrics provides an interface for collecting CPU metrics.
+// All methods are safe for concurrent use unless otherwise noted.
+//
+// Example usage of key methods:
+//
+//	// Get CPU frequency
+//	freq, err := cpu.GetFrequency()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Printf("CPU Frequency: %d MHz\n", freq)
+//
+//	// Get platform information
+//	platform, err := cpu.GetPlatform()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	if platform.IsAppleSilicon {
+//	    pFreq, err := cpu.GetPerformanceFrequency()
+//	    if err != nil {
+//	        log.Fatal(err)
+//	    }
+//	    fmt.Printf("Performance Core Frequency: %d MHz\n", pFreq)
+//	}
 type CPUMetrics interface {
 	// GetFrequency returns the current CPU frequency in MHz.
 	// For Apple Silicon Macs, this returns the highest frequency among all cores.
-	// Returns ErrHardwareAccess if the frequency cannot be determined.
+	// Returns:
+	//   - Current frequency in MHz
+	//   - ErrHardwareAccess if the frequency cannot be determined
+	//   - ErrShutdown if the provider has been shut down
 	GetFrequency() (uint64, error)
 
 	// GetPerformanceFrequency returns the current frequency of performance cores in MHz.
-	// This method is only applicable to Apple Silicon Macs and will return 0 on Intel Macs.
-	// Returns ErrUnsupportedPlatform on Intel Macs.
-	// Returns ErrHardwareAccess if the frequency cannot be determined.
+	// This method is only applicable to Apple Silicon Macs.
+	// Returns:
+	//   - Current performance core frequency in MHz
+	//   - ErrUnsupportedPlatform on Intel Macs
+	//   - ErrHardwareAccess if the frequency cannot be determined
+	//   - ErrShutdown if the provider has been shut down
 	GetPerformanceFrequency() (uint64, error)
 
 	// GetEfficiencyFrequency returns the current frequency of efficiency cores in MHz.
-	// This method is only applicable to Apple Silicon Macs and will return 0 on Intel Macs.
-	// Returns ErrUnsupportedPlatform on Intel Macs.
-	// Returns ErrHardwareAccess if the frequency cannot be determined.
+	// This method is only applicable to Apple Silicon Macs.
+	// Returns:
+	//   - Current efficiency core frequency in MHz
+	//   - ErrUnsupportedPlatform on Intel Macs
+	//   - ErrHardwareAccess if the frequency cannot be determined
+	//   - ErrShutdown if the provider has been shut down
 	GetEfficiencyFrequency() (uint64, error)
 
 	// GetCoreCount returns the number of physical CPU cores.
-	// Returns ErrHardwareAccess if the core count cannot be determined.
+	// Returns:
+	//   - Number of physical cores
+	//   - ErrHardwareAccess if the core count cannot be determined
+	//   - ErrShutdown if the provider has been shut down
 	GetCoreCount() (int, error)
 
 	// GetPerformanceCoreCount returns the number of performance cores.
-	// This method is only applicable to Apple Silicon Macs and will return 0 on Intel Macs.
-	// Returns ErrUnsupportedPlatform on Intel Macs.
-	// Returns ErrHardwareAccess if the core count cannot be determined.
+	// This method is only applicable to Apple Silicon Macs.
+	// Returns:
+	//   - Number of performance cores
+	//   - ErrUnsupportedPlatform on Intel Macs
+	//   - ErrHardwareAccess if the core count cannot be determined
+	//   - ErrShutdown if the provider has been shut down
 	GetPerformanceCoreCount() (int, error)
 
 	// GetEfficiencyCoreCount returns the number of efficiency cores.
-	// This method is only applicable to Apple Silicon Macs and will return 0 on Intel Macs.
-	// Returns ErrUnsupportedPlatform on Intel Macs.
-	// Returns ErrHardwareAccess if the core count cannot be determined.
+	// This method is only applicable to Apple Silicon Macs.
+	// Returns:
+	//   - Number of efficiency cores
+	//   - ErrUnsupportedPlatform on Intel Macs
+	//   - ErrHardwareAccess if the core count cannot be determined
+	//   - ErrShutdown if the provider has been shut down
 	GetEfficiencyCoreCount() (int, error)
 
 	// GetStats returns current CPU statistics.
-	// Returns ErrHardwareAccess if the statistics cannot be collected.
+	// Returns:
+	//   - CPU statistics including usage, frequency, and core information
+	//   - ErrHardwareAccess if the statistics cannot be collected
+	//   - ErrShutdown if the provider has been shut down
 	GetStats() (*types.CPUStats, error)
 
 	// GetPlatform returns information about the CPU platform.
-	// Returns ErrHardwareAccess if the platform information cannot be determined.
+	// Returns:
+	//   - CPU platform information including processor type and capabilities
+	//   - ErrHardwareAccess if the platform information cannot be determined
+	//   - ErrShutdown if the provider has been shut down
 	GetPlatform() (*types.CPUPlatform, error)
 
 	// Watch starts monitoring CPU metrics and sends updates to the provided channel.
 	// The channel will be closed when monitoring stops or an error occurs.
-	// The interval parameter specifies how often to collect metrics.
-	// Returns ErrInvalidInterval if interval is not positive.
+	// This method is safe for concurrent use, but only one Watch call should be active
+	// at a time. Additional calls will return an error.
+	// Returns:
+	//   - Channel receiving CPU statistics updates
+	//   - ErrInvalidInterval if interval is not positive
+	//   - ErrShutdown if the provider has been shut down
 	Watch(interval time.Duration) (<-chan *types.CPUStats, error)
 
 	// Shutdown cleans up any resources used by the provider.
-	// This should be called when the provider is no longer needed.
-	// After calling Shutdown, other methods may return errors.
+	// This method is safe for concurrent use but should only be called once.
+	// After calling Shutdown, all other methods will return ErrShutdown.
 	Shutdown() error
 }
