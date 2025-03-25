@@ -8,6 +8,14 @@
 #include <string.h>
 #include <syslog.h>
 
+#ifndef true
+#define true 1
+#endif
+
+#ifndef false
+#define false 0
+#endif
+
 // SMC keys for power information
 #define SMC_KEY_CPU_POWER "PC0C"
 #define SMC_KEY_GPU_POWER "PCGC"
@@ -59,10 +67,7 @@ static struct {
     .initialised = false,
     .last_error = {.code = SMC_SUCCESS, .message = "No error", .severity = 0}};
 
-// Forward declarations for internal functions
-static bool init_smc_internal(io_connect_t *conn, smc_error_info_t *error);
-static void cleanup_smc_internal(io_connect_t conn);
-
+// Global power source keys
 static CFStringRef kPowerSourceStateKey;
 static CFStringRef kPowerSourceTypeKey;
 static CFStringRef kPowerSourceInternalBattery;
@@ -74,8 +79,8 @@ static CFStringRef kPowerSourceTimeToEmptyKey;
 static CFStringRef kPowerSourceCycleCountKey;
 static CFStringRef kPowerSourceDesignCapacityKey;
 
-// Add an initialization function
-static bool init_power_source_keys(void) {
+// Initialize power source keys
+bool init_power_source_keys(void) {
   kPowerSourceStateKey = CFSTR("Power Source State");
   kPowerSourceTypeKey = CFSTR("Type");
   kPowerSourceInternalBattery = CFSTR("InternalBattery");
@@ -247,6 +252,18 @@ int init_smc_with_options(smc_connection_t *conn,
   conn->lock = OS_UNFAIR_LOCK_INIT;
   conn->limited_mode = options ? options->allow_limited_mode : false;
 
+  // Initialize power source keys if needed
+  if (!options || !options->skip_power_keys) {
+    syslog(LOG_INFO, "SMC: Initialising power keys");
+    if (!init_power_source_keys()) {
+      conn->error.code = SMC_ERROR_INIT_KEYS;
+      conn->error.message = "Failed to initialize power source keys";
+      conn->error.severity = 2;
+      log_smc_error(&conn->error, "Power Key Initialisation");
+      return SMC_ERROR_INIT_KEYS;
+    }
+  }
+
   // Find and open SMC service
   io_service_t service = IOServiceGetMatchingService(
       kIOMainPortDefault, IOServiceMatching("AppleSMC"));
@@ -271,12 +288,6 @@ int init_smc_with_options(smc_connection_t *conn,
     conn->error.severity = 2;
     log_smc_error(&conn->error, "Connection Open");
     return SMC_ERROR_OPEN_FAILED;
-  }
-
-  // Initialize SMC keys if needed
-  if (!options || !options->skip_power_keys) {
-    syslog(LOG_INFO, "SMC: Initialising power keys");
-    // Key initialization would go here
   }
 
   conn->error.code = SMC_SUCCESS;
@@ -352,8 +363,10 @@ static bool read_smc_key(io_connect_t conn, const char *key_str,
 }
 
 static float decode_smc_float(const smc_cmd_t *cmd) {
-  if (!cmd)
+  if (!cmd) {
+    syslog(LOG_ERR, "SMC Error: NULL command pointer in decode_smc_float");
     return 0.0f;
+  }
 
   uint32_t data_type = cmd->keyInfo & 0xFFFFFFFF;
   const uint8_t *data = cmd->data;
@@ -366,11 +379,37 @@ static float decode_smc_float(const smc_cmd_t *cmd) {
     return (float)((data[0] << 8 | data[1]) >> 4) +
            ((float)(data[1] & 0xF) / (1 << 12));
 
+  case SMC_TYPE_FP5B: // 5-bit exponent, 11-bit fraction
+    return (float)((data[0] << 8 | data[1]) >> 5) +
+           ((float)(data[1] & 0x1F) / (1 << 11));
+
+  case SMC_TYPE_FP6A: // 6-bit exponent, 10-bit fraction
+    return (float)((data[0] << 8 | data[1]) >> 6) +
+           ((float)(data[1] & 0x3F) / (1 << 10));
+
+  case SMC_TYPE_FP79: // 7-bit exponent, 9-bit fraction
+    return (float)((data[0] << 8 | data[1]) >> 7) +
+           ((float)(data[1] & 0x7F) / (1 << 9));
+
   case SMC_TYPE_FP88: // 8-bit integer, 8-bit fraction
     return (float)data[0] + ((float)data[1] / (1 << 8));
 
+  case SMC_TYPE_FPA6: // 10-bit integer, 6-bit fraction
+    return (float)((data[0] << 8 | data[1]) >> 6) +
+           ((float)(data[1] & 0x3F) / (1 << 6));
+
+  case SMC_TYPE_FPC4: // 12-bit integer, 4-bit fraction
+    return (float)((data[0] << 8 | data[1]) >> 4) +
+           ((float)(data[1] & 0xF) / (1 << 4));
+
+  case SMC_TYPE_FPE2: // 14-bit integer, 2-bit fraction
+    return (float)((data[0] << 8 | data[1]) >> 2) +
+           ((float)(data[1] & 0x3) / (1 << 2));
+
   default:
-    return 0.0f; // Unsupported type
+    syslog(LOG_WARNING, "SMC Warning: Unsupported float type: 0x%08x",
+           data_type);
+    return 0.0f;
   }
 }
 
