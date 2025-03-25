@@ -350,3 +350,24 @@ bool get_smc_float(const char *key, float *value) {
   os_unfair_lock_unlock(&g_smc.lock);
   return success;
 }
+
+void cleanup_smc_connection(smc_connection_t *conn) {
+  if (!conn)
+    return;
+
+  os_unfair_lock_lock(&conn->lock);
+
+  if (conn->connection) {
+    // Close the SMC connection
+    IOServiceClose(conn->connection);
+    conn->connection = 0;
+  }
+
+  // Reset error state
+  conn->error.code = SMC_SUCCESS;
+  conn->error.message = "Connection closed";
+  conn->error.severity = 0;
+  conn->limited_mode = false;
+
+  os_unfair_lock_unlock(&conn->lock);
+}

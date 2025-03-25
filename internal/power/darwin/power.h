@@ -84,5 +84,6 @@ int init_smc_with_options(smc_connection_t *conn,
                           const smc_init_options_t *options);
 void get_smc_error_info(smc_connection_t *conn, smc_error_info_t *error);
 bool is_smc_limited_mode(smc_connection_t *conn);
+void cleanup_smc_connection(smc_connection_t *conn);
 
 #endif // POWER_H
