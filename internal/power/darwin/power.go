@@ -19,8 +19,6 @@ type Provider struct {
 
 // NewProvider creates a new Darwin power metrics provider.
 func NewProvider() *Provider {
-	// Initialise SMC connection - errors are logged but not fatal
-	initSMC()
 	return &Provider{}
 }
 
@@ -132,4 +130,9 @@ func (p *Provider) Watch(ctx context.Context, interval time.Duration) (<-chan ty
 	}()
 
 	return ch, nil
+}
+
+// Shutdown cleans up resources used by the provider.
+func (p *Provider) Shutdown() error {
+	return nil
 }

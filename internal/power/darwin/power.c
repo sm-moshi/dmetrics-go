@@ -44,17 +44,13 @@ typedef struct {
   uint8_t dataAttributes;
 } smc_key_info_t;
 
-// Global SMC connection with thread safety
-static struct {
-  io_connect_t conn;
-  os_unfair_lock lock;
-  bool initialised;
-  smc_error_info_t last_error;
-} g_smc = {
-    .conn = 0,
-    .lock = OS_UNFAIR_LOCK_INIT,
-    .initialised = false,
-    .last_error = {.code = SMC_SUCCESS, .message = "No error", .severity = 0}};
+// Global SMC connection state
+static smc_connection_t g_smc_conn = {.connection = 0,
+                                      .error = {.code = SMC_SUCCESS,
+                                                .message = NULL,
+                                                .severity = SMC_SEVERITY_INFO},
+                                      .lock = OS_UNFAIR_LOCK_INIT,
+                                      .limited_mode = false};
 
 // Global power source keys
 static CFStringRef kPowerSourceStateKey;
@@ -87,96 +83,61 @@ bool get_power_source_info(power_stats_t *stats) {
   if (!stats)
     return false;
 
-  CFTypeRef blob = IOPSCopyPowerSourcesInfo();
-  CFArrayRef sources = IOPSCopyPowerSourcesList(blob);
-  if (!sources) {
-    CFRelease(blob);
+  // Initialize with defaults
+  stats->is_present = false;
+  stats->is_charging = false;
+  stats->percentage = 0.0;
+
+  // Get power source information
+  CFTypeRef powerInfo = IOPSCopyPowerSourcesInfo();
+  if (!powerInfo)
+    return false;
+
+  CFArrayRef powerSources = IOPSCopyPowerSourcesList(powerInfo);
+  if (!powerSources) {
+    CFRelease(powerInfo);
     return false;
   }
 
-  bool success = false;
-  CFIndex count = CFArrayGetCount(sources);
+  // Get first power source (usually the internal battery)
+  CFIndex count = CFArrayGetCount(powerSources);
   if (count > 0) {
-    CFDictionaryRef ps =
-        IOPSGetPowerSourceDescription(blob, CFArrayGetValueAtIndex(sources, 0));
-    if (ps) {
-      // Get power source type
-      CFStringRef ps_type = CFDictionaryGetValue(ps, kPowerSourceTypeKey);
-      if (ps_type && CFEqual(ps_type, kPowerSourceInternalBattery)) {
+    CFDictionaryRef powerSource = IOPSGetPowerSourceDescription(
+        powerInfo, CFArrayGetValueAtIndex(powerSources, 0));
+
+    if (powerSource) {
+      // Check if it's an internal battery
+      CFStringRef type = CFDictionaryGetValue(powerSource, CFSTR("Type"));
+      if (type && CFEqual(type, CFSTR("InternalBattery"))) {
         stats->is_present = true;
 
         // Get charging state
-        CFStringRef charging_state =
-            CFDictionaryGetValue(ps, kPowerSourceStateKey);
-        if (charging_state) {
-          stats->is_charging = CFEqual(charging_state, kPowerSourceChargingKey);
-          stats->is_charged = CFEqual(charging_state, kPowerSourceChargedKey);
+        CFStringRef powerState =
+            CFDictionaryGetValue(powerSource, CFSTR("Power State"));
+        if (powerState) {
+          stats->is_charging = CFEqual(powerState, CFSTR("Charging"));
         }
 
-        // Get current capacity
-        CFNumberRef current_cap =
-            CFDictionaryGetValue(ps, kPowerSourceCurrentCapacityKey);
-        if (current_cap) {
+        // Get current capacity percentage
+        CFNumberRef currentCapacity =
+            CFDictionaryGetValue(powerSource, CFSTR("Current Capacity"));
+        if (currentCapacity) {
           int value;
-          if (CFNumberGetValue(current_cap, kCFNumberIntType, &value)) {
-            stats->current_capacity = (double)value;
+          if (CFNumberGetValue(currentCapacity, kCFNumberIntType, &value)) {
+            stats->percentage = (double)value;
           }
         }
-
-        // Get max capacity
-        CFNumberRef max_cap =
-            CFDictionaryGetValue(ps, kPowerSourceMaxCapacityKey);
-        if (max_cap) {
-          int value;
-          if (CFNumberGetValue(max_cap, kCFNumberIntType, &value)) {
-            stats->max_capacity = (double)value;
-          }
-        }
-
-        // Get design capacity
-        CFNumberRef design_cap =
-            CFDictionaryGetValue(ps, kPowerSourceDesignCapacityKey);
-        if (design_cap) {
-          int value;
-          if (CFNumberGetValue(design_cap, kCFNumberIntType, &value)) {
-            stats->design_capacity = (double)value;
-          } else {
-            // If design capacity isn't available, use max capacity as fallback
-            stats->design_capacity = stats->max_capacity;
-          }
-        } else {
-          // Fallback to max capacity if design capacity isn't available
-          stats->design_capacity = stats->max_capacity;
-        }
-
-        // Get time remaining
-        CFNumberRef time = CFDictionaryGetValue(ps, kPowerSourceTimeToEmptyKey);
-        if (time) {
-          CFNumberGetValue(time, kCFNumberIntType, &stats->time_remaining);
-        }
-
-        // Get cycle count
-        CFNumberRef cycles =
-            CFDictionaryGetValue(ps, kPowerSourceCycleCountKey);
-        if (cycles) {
-          CFNumberGetValue(cycles, kCFNumberIntType, &stats->cycle_count);
-        }
-
-        success = true;
       }
-
-      // After getting the power source dictionary
-      CFShow(ps); // This will print all available keys and values
     }
   }
 
-  CFRelease(sources);
-  CFRelease(blob);
-  return success;
+  CFRelease(powerSources);
+  CFRelease(powerInfo);
+  return true;
 }
 
 bool get_system_power_info(system_power_t *power) {
-  if (!power || !g_smc.conn)
+  if (!power || !g_smc_conn.connection)
     return false;
 
   float value;
@@ -225,32 +186,21 @@ static void log_smc_error(smc_error_info_t *error, const char *context) {
          error->code);
 }
 
-// Update init_smc_with_options to use error logging
+/**
+ * Initialises the SMC connection with the specified options.
+ * This function handles the low-level setup of the SMC connection
+ * and applies the provided configuration options.
+ *
+ * Thread-safety: The caller must hold the connection lock.
+ *
+ * @param conn Pointer to the connection structure to initialise
+ * @param options Configuration options for the connection
+ * @return SMC_SUCCESS on success, or an error code on failure
+ */
 int init_smc_with_options(smc_connection_t *conn,
                           const smc_init_options_t *options) {
-  if (!conn) {
-    syslog(LOG_ERR, "SMC Error: NULL connection pointer");
-    return SMC_ERROR_INIT_KEYS;
-  }
-
-  // Initialize the connection structure
-  conn->connection = 0;
-  conn->error.code = SMC_SUCCESS;
-  conn->error.message = "Initialising";
-  conn->error.severity = 0;
-  conn->lock = OS_UNFAIR_LOCK_INIT;
-  conn->limited_mode = options ? options->allow_limited_mode : false;
-
-  // Initialize power source keys if needed
-  if (!options || !options->skip_power_keys) {
-    syslog(LOG_INFO, "SMC: Initialising power keys");
-    if (!init_power_source_keys()) {
-      conn->error.code = SMC_ERROR_INIT_KEYS;
-      conn->error.message = "Failed to initialize power source keys";
-      conn->error.severity = 2;
-      log_smc_error(&conn->error, "Power Key Initialisation");
-      return SMC_ERROR_INIT_KEYS;
-    }
+  if (!conn || !options) {
+    return SMC_ERROR_INVALID_ARGS;
   }
 
   // Find and open SMC service
@@ -279,6 +229,21 @@ int init_smc_with_options(smc_connection_t *conn,
     return SMC_ERROR_OPEN_FAILED;
   }
 
+  // Apply options
+  conn->limited_mode = options->allow_limited_mode;
+
+  // Initialize power source keys if not in limited mode
+  if (!options->skip_power_keys && !conn->limited_mode) {
+    if (!init_power_source_keys()) {
+      cleanup_smc_connection(conn);
+      conn->error.code = SMC_ERROR_INIT_FAILED;
+      conn->error.message = "Failed to initialize power source keys";
+      conn->error.severity = 2;
+      log_smc_error(&conn->error, "Power Keys Init");
+      return SMC_ERROR_INIT_FAILED;
+    }
+  }
+
   conn->error.code = SMC_SUCCESS;
   conn->error.message = "SMC initialised successfully";
   conn->error.severity = 0;
@@ -305,7 +270,15 @@ bool is_smc_limited_mode(smc_connection_t *conn) {
   return limited;
 }
 
-// Update read_smc_key to include error logging
+/**
+ * Reads an SMC key value with thread-safe locking.
+ * This is an internal helper function used by get_smc_float.
+ *
+ * @param conn The SMC connection handle
+ * @param key_str The 4-character SMC key to read
+ * @param cmd Pointer to store the command results
+ * @return true if successful, false on error
+ */
 static bool read_smc_key(io_connect_t conn, const char *key_str,
                          smc_cmd_t *cmd) {
   if (!key_str || !cmd) {
@@ -352,13 +325,93 @@ static bool read_smc_key(io_connect_t conn, const char *key_str,
 }
 
 bool init_smc(void) {
-  smc_connection_t conn;
+  os_unfair_lock_lock(&g_smc_conn.lock);
   smc_init_options_t options = {.allow_limited_mode = false,
                                 .skip_power_keys = false,
                                 .timeout_ms = 1000};
-  return init_smc_with_options(&conn, &options) == SMC_SUCCESS;
+  int result = init_smc_with_options(&g_smc_conn, &options);
+  if (result != SMC_SUCCESS) {
+    g_smc_conn.connection = 0;
+    g_smc_conn.limited_mode = false;
+  }
+  os_unfair_lock_unlock(&g_smc_conn.lock);
+  return result == SMC_SUCCESS;
 }
 
+bool close_smc(void) {
+  os_unfair_lock_lock(&g_smc_conn.lock);
+
+  bool success = true;
+  if (g_smc_conn.connection != 0) {
+    kern_return_t result = IOServiceClose(g_smc_conn.connection);
+    if (result != KERN_SUCCESS) {
+      g_smc_conn.error.code = SMC_ERROR_INIT_FAILED;
+      g_smc_conn.error.message = "Failed to close SMC connection";
+      g_smc_conn.error.severity = SMC_SEVERITY_ERROR;
+      log_smc_error(&g_smc_conn.error, "Connection Close");
+      success = false;
+    } else {
+      // Cleanup power source keys if they were initialised
+      if (!g_smc_conn.limited_mode) {
+        cleanup_power_source_keys();
+      }
+
+      // Reset connection state
+      g_smc_conn.connection = 0;
+      g_smc_conn.error.code = SMC_SUCCESS;
+      g_smc_conn.error.message = "SMC connection closed successfully";
+      g_smc_conn.error.severity = SMC_SEVERITY_INFO;
+      log_smc_error(&g_smc_conn.error, "Connection Close");
+    }
+  }
+
+  os_unfair_lock_unlock(&g_smc_conn.lock);
+  return success;
+}
+
+/**
+ * Decodes an SMC float value from the raw command data.
+ * Each SMC float type uses a different fixed-point format:
+ *
+ * - FP1F: 1-bit exponent, 15-bit fraction
+ *   Format: [1-bit exp][15-bit frac]
+ *   Range: 0 to ~1.999
+ *
+ * - FP4C: 4-bit exponent, 12-bit fraction
+ *   Format: [4-bit exp][12-bit frac]
+ *   Range: 0 to ~15.999
+ *
+ * - FP5B: 5-bit exponent, 11-bit fraction
+ *   Format: [5-bit exp][11-bit frac]
+ *   Range: 0 to ~31.999
+ *
+ * - FP6A: 6-bit exponent, 10-bit fraction
+ *   Format: [6-bit exp][10-bit frac]
+ *   Range: 0 to ~63.999
+ *
+ * - FP79: 7-bit exponent, 9-bit fraction
+ *   Format: [7-bit exp][9-bit frac]
+ *   Range: 0 to ~127.999
+ *
+ * - FP88: 8-bit integer, 8-bit fraction
+ *   Format: [8-bit int][8-bit frac]
+ *   Range: 0 to 255.99609375
+ *
+ * - FPA6: 10-bit integer, 6-bit fraction
+ *   Format: [10-bit int][6-bit frac]
+ *   Range: 0 to 1023.984375
+ *
+ * - FPC4: 12-bit integer, 4-bit fraction
+ *   Format: [12-bit int][4-bit frac]
+ *   Range: 0 to 4095.9375
+ *
+ * - FPE2: 14-bit integer, 2-bit fraction
+ *   Format: [14-bit int][2-bit frac]
+ *   Range: 0 to 16383.75
+ *
+ * @param cmd Pointer to the SMC command structure containing the data
+ * @return The decoded float value, or 0.0f on error
+ */
 float decode_smc_float(const smc_cmd_t *cmd) {
   if (!cmd) {
     syslog(LOG_ERR, "SMC Error: NULL command pointer in decode_smc_float");
@@ -422,25 +475,25 @@ float decode_smc_float(const smc_cmd_t *cmd) {
 }
 
 bool get_smc_float(const char *key, float *value) {
-  if (!key || !value || !g_smc.conn)
+  if (!key || !value || !g_smc_conn.connection)
     return false;
 
-  os_unfair_lock_lock(&g_smc.lock);
+  os_unfair_lock_lock(&g_smc_conn.lock);
 
   smc_cmd_t cmd;
   memset(&cmd, 0, sizeof(cmd));
 
-  bool success = read_smc_key(g_smc.conn, key, &cmd);
+  bool success = read_smc_key(g_smc_conn.connection, key, &cmd);
   if (success) {
     *value = decode_smc_float(&cmd);
   }
 
-  os_unfair_lock_unlock(&g_smc.lock);
+  os_unfair_lock_unlock(&g_smc_conn.lock);
   return success;
 }
 
 // Cleanup power source keys
-static void cleanup_power_source_keys(void) {
+void cleanup_power_source_keys(void) {
   if (kPowerSourceStateKey) {
     CFRelease(kPowerSourceStateKey);
     kPowerSourceStateKey = NULL;

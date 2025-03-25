@@ -51,4 +51,9 @@ type PowerMetrics interface {
 	// The interval parameter determines how often updates are sent.
 	// A zero or negative interval will result in an error.
 	Watch(ctx context.Context, interval time.Duration) (<-chan types.PowerStats, error)
+
+	// Shutdown cleans up resources used by the provider.
+	// This method should be called when the provider is no longer needed.
+	// After calling Shutdown, other methods may return errors.
+	Shutdown() error
 }

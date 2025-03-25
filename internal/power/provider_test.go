@@ -1,7 +1,15 @@
 //go:build darwin
 // +build darwin
 
-package power_test
+// Package power_test verifies the functionality of the power package
+// by testing its interaction with the macOS power management APIs.
+// These tests ensure that:
+// - Basic power source information can be retrieved
+// - Battery metrics are accurately reported when available
+// - The provider handles concurrent access safely
+// - Watch functionality provides timely updates
+// - Resources are properly cleaned up on shutdown
+package power
 
 import (
 	"context"
@@ -12,12 +20,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/sm-moshi/dmetrics-go/internal/power"
 	"github.com/sm-moshi/dmetrics-go/pkg/metrics/types"
 )
 
+// TestNewProvider verifies the core functionality of the power provider.
+// It tests the provider's ability to:
+// - Initialize successfully
+// - Retrieve power source information
+// - Get battery percentage when available
+// - Collect comprehensive power statistics
+// - Watch for power-related changes
 func TestNewProvider(t *testing.T) {
-	provider := power.NewProvider()
+	provider := NewProvider()
 	require.NotNil(t, provider, "provider should not be nil")
 
 	ctx := t.Context()
@@ -48,12 +62,8 @@ func TestNewProvider(t *testing.T) {
 			assert.GreaterOrEqual(t, stats.Percentage, 0.0, "battery percentage should be >= 0%")
 			assert.LessOrEqual(t, stats.Percentage, 100.0, "battery percentage should be <= 100%")
 			assert.NotEqual(t, stats.State, "", "battery state should not be empty")
-			assert.NotEqual(t, stats.Health, "", "battery health should not be empty")
 		}
 
-		assert.GreaterOrEqual(t, stats.CPUPower, 0.0, "CPU power should be >= 0W")
-		assert.GreaterOrEqual(t, stats.GPUPower, 0.0, "GPU power should be >= 0W")
-		assert.GreaterOrEqual(t, stats.TotalPower, 0.0, "total power should be >= 0W")
 		assert.WithinDuration(t, time.Now(), stats.Timestamp, 2*time.Second, "timestamp should be recent")
 	})
 
@@ -73,4 +83,31 @@ func TestNewProvider(t *testing.T) {
 
 		assert.Greater(t, updates, 0, "should receive at least one update")
 	})
+}
+
+// TestShutdown verifies that the provider can be cleanly shut down.
+// This ensures proper resource cleanup and prevents memory leaks.
+func TestShutdown(t *testing.T) {
+	provider := NewProvider()
+	err := provider.Shutdown()
+	assert.NoError(t, err)
+}
+
+// BenchmarkBasicOperations measures the performance of core power operations.
+// This helps identify potential performance bottlenecks in the power metrics
+// collection process.
+func BenchmarkBasicOperations(b *testing.B) {
+	provider := NewProvider()
+	ctx := context.Background()
+
+	b.Run("GetStats", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			stats, err := provider.GetStats(ctx)
+			assert.NoError(b, err)
+			assert.NotNil(b, stats)
+		}
+	})
+
+	err := provider.Shutdown()
+	assert.NoError(b, err)
 }

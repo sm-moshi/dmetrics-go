@@ -51,9 +51,11 @@ This TODO list tracks the porting process from [darwin-metrics (Rust)](https://g
 
 - [x] **Power Source / Battery Info**
   - [x] Read power source type (AC/battery) via `IOPSCopyPowerSourcesInfo`
-  - [x] Extract battery charge, status, cycle count, and health
+  - [x] Extract battery charge and status
   - [x] Implement thread-safe concurrent access
   - [x] Add proper context handling for cancellation
+  - [ ] Future v0.2: Add cycle count and health monitoring via SMC
+  - [ ] Future v0.2: Add detailed power consumption metrics
 
 - [ ] **Process Monitoring**
   - Use `libproc` via `cgo` to list processes and gather PID stats
