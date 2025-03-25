@@ -1,9 +1,14 @@
+// Package main provides an example of using the CPU metrics functionality
+// from the dmetrics-go library. It demonstrates how to collect and display
+// CPU statistics including usage, frequency, and core count.
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -12,9 +17,9 @@ import (
 
 const cpuUsageBarScale = 5 // Each bar character represents 5% CPU usage
 
-func printStats() error {
+func printStats(ctx context.Context) error {
 	provider := cpu.NewProvider()
-	stats, err := provider.GetStats(nil) // Using nil context for simplicity in example
+	stats, err := provider.GetStats(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get CPU stats: %w", err)
 	}
@@ -42,11 +47,23 @@ func printStats() error {
 	return nil
 }
 
-func main() {
+func run() error {
+	// Create a context that can be cancelled
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set up signal handling for graceful shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	go func() {
+		<-sigCh
+		fmt.Println("\nShutting down...")
+		cancel()
+	}()
+
 	// Initial check to ensure we can get stats
-	if err := printStats(); err != nil {
-		log.Printf("Error: %v", err)
-		os.Exit(1)
+	if err := printStats(ctx); err != nil {
+		return fmt.Errorf("initial stats check failed: %w", err)
 	}
 
 	// Print stats every second
@@ -56,10 +73,26 @@ func main() {
 	fmt.Println("Press Ctrl+C to exit...")
 
 	for {
-		if err := printStats(); err != nil {
-			log.Printf("Error: %v", err)
-			return
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-sigCh:
+			fmt.Println("\nShutting down...")
+			return nil
+		case <-ticker.C:
+			if err := printStats(ctx); err != nil {
+				if ctx.Err() != nil {
+					return nil // Context cancelled, exit silently
+				}
+				return fmt.Errorf("failed to print stats: %w", err)
+			}
 		}
-		<-ticker.C
+	}
+}
+
+func main() {
+	if err := run(); err != nil {
+		log.Printf("Error: %v", err)
+		os.Exit(1)
 	}
 }

@@ -1,10 +1,10 @@
 /*
 Package dmetrics provides a comprehensive system metrics collection library for macOS.
 
-It offers real-time monitoring of various system metrics including:
-  - CPU usage, frequency, and load averages
+The library enables real-time monitoring of various system metrics:
+  - CPU utilisation, frequency (where available), and load averages
   - Memory usage and virtual memory statistics
-  - GPU metrics and VRAM usage
+  - GPU metrics and VRAM utilisation
   - Temperature sensors and fan speeds
   - Power source and battery information
   - Process statistics
@@ -29,27 +29,32 @@ Example usage:
 	        log.Fatal(err)
 	    }
 	    fmt.Printf("CPU Usage: %.2f%%\n", stats.TotalUsage)
-	    fmt.Printf("Frequency: %d MHz\n", stats.FrequencyMHz)
+	    if stats.FrequencyMHz > 0 {
+	        fmt.Printf("Frequency: %d MHz\n", stats.FrequencyMHz)
+	    } else {
+	        fmt.Println("CPU frequency detection not available")
+	    }
 	}
 
-The library uses cgo to interface with macOS system calls and frameworks:
-  - sysctl for CPU and memory statistics
-  - IOKit for GPU and power information
-  - SMC for temperature and fan data
-  - libproc for process monitoring
+The library interfaces with macOS system calls and frameworks through cgo:
+  - sysctl: Core system statistics and configuration
+  - IOKit: GPU metrics and power management
+  - SMC: Temperature monitoring and fan control
+  - libproc: Process monitoring and statistics
 
-All packages are designed to be thread-safe and efficient, with proper resource cleanup
-and error handling. The library supports both Intel and Apple Silicon Macs.
+All packages are designed for thread safety and efficiency, with proper resource
+management and error handling. The implementation supports both Intel and
+Apple Silicon Macs, with architecture-specific optimisations where available.
 
-Package Structure:
+Package Organisation:
   - api/metrics: Public interfaces for metrics collection
   - internal/cpu: Platform-specific CPU metrics implementation
-  - internal/gpu: Platform-specific GPU metrics implementation
-  - internal/power: Platform-specific power metrics implementation
-  - internal/temperature: Platform-specific temperature metrics implementation
-  - internal/memory: Platform-specific memory metrics implementation
-  - internal/network: Platform-specific network metrics implementation
-  - internal/process: Platform-specific process metrics implementation
+  - internal/gpu: Platform-specific GPU metrics implementation (TODO)
+  - internal/power: Platform-specific power metrics implementation (TODO)
+  - internal/temperature: Platform-specific temperature metrics implementation (TODO)
+  - internal/memory: Platform-specific memory metrics implementation (TODO)
+  - internal/network: Platform-specific network metrics implementation (TODO)
+  - internal/process: Platform-specific process metrics implementation (TODO)
   - pkg/metrics/types: Common type definitions for all metrics
 */
 package dmetrics

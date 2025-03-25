@@ -163,7 +163,7 @@ func getFrequency() (uint64, error) {
 	// Fall back to traditional method
 	freq := C.get_cpu_freq()
 	if freq == 0 {
-		return 0, cpuError(C.CPU_ERROR_SYSCTL)
+		return 0, errors.New("failed to detect CPU frequency")
 	}
 	return uint64(freq), nil
 }
@@ -198,7 +198,8 @@ func cleanup() {
 	C.go_cleanup_cpu_stats()
 }
 
-func init() {
+// initCleanup sets up the finalizer for cleaning up C resources.
+func initCleanup() {
 	runtime.SetFinalizer(new(bool), func(_ *bool) {
 		cleanup()
 	})

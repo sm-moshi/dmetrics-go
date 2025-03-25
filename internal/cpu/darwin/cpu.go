@@ -18,11 +18,15 @@ type Provider struct {
 
 // NewProvider creates a new Darwin CPU metrics provider.
 func NewProvider() *Provider {
+	initCleanup()
 	return &Provider{}
 }
 
 // GetStats returns current CPU statistics.
 func (p *Provider) GetStats(ctx context.Context) (*types.CPUStats, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	stats, err := getStats()
 	if err != nil {
 		return nil, err
@@ -31,17 +35,50 @@ func (p *Provider) GetStats(ctx context.Context) (*types.CPUStats, error) {
 }
 
 // GetUsage returns the current total CPU usage percentage (0-100).
+// The interval parameter determines the sampling period for calculating usage.
 func (p *Provider) GetUsage(ctx context.Context, interval time.Duration) (float64, error) {
-	return usage()
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
+
+	// Create a timer for the interval
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+
+	// Get initial usage
+	initial, err := usage()
+	if err != nil {
+		return 0, err
+	}
+
+	// Wait for either context cancellation or interval completion
+	select {
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	case <-timer.C:
+		var final float64
+		final, err = usage()
+		if err != nil {
+			return 0, err
+		}
+		// Return the difference in usage over the interval
+		return final - initial, nil
+	}
 }
 
 // GetFrequency returns the current CPU frequency in MHz.
 func (p *Provider) GetFrequency(ctx context.Context) (uint64, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
 	return getFrequency()
 }
 
 // GetCoreCount returns the number of CPU cores.
 func (p *Provider) GetCoreCount(ctx context.Context) (int, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
 	stats, err := getStats()
 	if err != nil {
 		return 0, err
@@ -49,14 +86,21 @@ func (p *Provider) GetCoreCount(ctx context.Context) (int, error) {
 	return stats.PhysicalCores, nil
 }
 
-// Watch starts monitoring CPU metrics and sends updates through the returned channel.
+// Watch monitors CPU statistics and sends updates through the returned channel.
+// The interval parameter determines how often updates are sent.
+// The returned channel will be closed when the context is cancelled or an error occurs.
 func (p *Provider) Watch(ctx context.Context, interval time.Duration) (<-chan types.CPUStats, error) {
+	if interval <= 0 {
+		return nil, types.ErrInvalidInterval
+	}
+
 	ch := make(chan types.CPUStats)
 
 	go func() {
+		defer close(ch)
+
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		defer close(ch)
 
 		for {
 			select {
@@ -65,9 +109,16 @@ func (p *Provider) Watch(ctx context.Context, interval time.Duration) (<-chan ty
 			case <-ticker.C:
 				stats, err := p.GetStats(ctx)
 				if err != nil {
-					continue
+					// Log error if needed
+					return
 				}
-				ch <- *stats
+
+				// Try to send stats, but respect context cancellation
+				select {
+				case ch <- *stats:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}()

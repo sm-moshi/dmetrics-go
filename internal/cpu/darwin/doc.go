@@ -4,22 +4,32 @@
 /*
 Package darwin provides the Darwin-specific implementation of CPU metrics collection.
 
-It implements the metrics.CPUMetrics interface defined in api/metrics/cpu.go and uses
-various Darwin-specific system calls to gather CPU statistics:
+This package implements the metrics.CPUMetrics interface by interfacing with various
+Darwin-specific system calls. Each call serves a specific purpose:
 
-  - sysctl for CPU core count and frequency
-  - host_processor_info for CPU usage statistics
-  - host_statistics for system-wide CPU metrics
-  - mach_absolute_time for high-precision timing
+  - sysctl: Provides core count and frequency data for system-wide CPU information
+  - host_processor_info: Enables per-core CPU utilisation tracking
+  - host_statistics: Delivers system-wide CPU metrics for overall health monitoring
+  - mach_absolute_time: Ensures high-precision timing for accurate measurements
 
-The package supports both Intel and Apple Silicon Macs, providing detailed CPU metrics
-including:
+The implementation supports both Intel and Apple Silicon Macs, offering specialised
+metrics for each architecture:
 
-  - Total and per-core CPU usage
-  - Current CPU frequency
-  - Load averages
+  - Total and per-core CPU utilisation
+  - Current CPU frequency (may return 0 if detection fails)
+  - Load averages for system activity assessment
   - Physical and logical core counts
-  - Platform-specific information (Apple Silicon vs Intel)
+  - Platform-specific optimisations (Apple Silicon vs Intel)
+
+CPU Frequency Detection:
+The package implements a multi-stage frequency detection strategy:
+ 1. Performance core frequency (Apple Silicon) - Primary method
+ 2. Efficiency core frequency (Apple Silicon) - Secondary method
+ 3. Traditional sysctl method (Intel) - Fallback method
+
+If all detection methods fail, the function returns 0 and an error explaining
+the failure. This behaviour allows applications to handle missing frequency
+data gracefully.
 
 Example usage:
 
@@ -31,7 +41,8 @@ Example usage:
 	fmt.Printf("CPU Usage: %.2f%%\n", stats.TotalUsage)
 
 Thread Safety:
-All functions in this package are thread-safe and can be called concurrently.
-The implementation properly manages system resources and handles cleanup.
+All functions are designed to be thread-safe and can be called concurrently.
+The implementation carefully manages system resources and ensures proper cleanup
+through finalisation.
 */
 package darwin
