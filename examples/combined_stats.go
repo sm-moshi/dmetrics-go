@@ -127,7 +127,7 @@ func run() error {
 
 	fmt.Println("\nPress Ctrl+C to exit...")
 
-	var lastPowerStats types.PowerStats
+	var lastPowerStats *types.PowerStats
 	for {
 		select {
 		case <-ctx.Done():
@@ -144,7 +144,7 @@ func run() error {
 			}
 			printStats(systemStats{
 				cpu:   cpuStats,
-				power: &lastPowerStats,
+				power: lastPowerStats,
 			})
 		}
 	}

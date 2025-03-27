@@ -24,7 +24,8 @@ import (
 )
 
 const (
-	maxCPUPercentage = 100.0
+	maxCPUPercentage   = 100.0
+	initialSampleDelay = 500 * time.Millisecond
 )
 
 // Error codes from C implementation for CPU metrics collection.
@@ -33,6 +34,8 @@ const (
 	errCPUHostProcessorInfo = -1
 	errCPUSysctl            = -2
 	errCPUMemory            = -3
+	errCPUMutex             = -4
+	errCPUNeedSecondSample  = -5
 )
 
 // cpuError converts a C error code to a Go error with appropriate context.
@@ -46,6 +49,11 @@ func cpuError(code int) error {
 		return fmt.Errorf("%w: sysctl operation failed", metrics.ErrHardwareAccess)
 	case errCPUMemory:
 		return fmt.Errorf("%w: memory allocation failed", metrics.ErrHardwareAccess)
+	case errCPUMutex:
+		return fmt.Errorf("%w: mutex operation failed", metrics.ErrHardwareAccess)
+	case errCPUNeedSecondSample:
+		// This is not an error, just need to wait for second sample
+		return nil
 	default:
 		return fmt.Errorf("%w: unknown error code %d", metrics.ErrHardwareAccess, code)
 	}
@@ -62,29 +70,35 @@ func getStats() (*types.CPUStats, error) {
 
 	var cStats C.cpu_stats_t
 	if err := int(C.get_cpu_stats(&cStats)); err != errCPUSuccess {
+		if err == errCPUNeedSecondSample {
+			// Wait for second sample
+			time.Sleep(initialSampleDelay)
+			return getStats()
+		}
 		return nil, cpuError(err)
 	}
 
 	// Get per-core stats
 	coreStats := make([]C.cpu_core_stats_t, numCPUs)
-	var numCores C.int
-	if err := int(C.get_cpu_core_stats(&coreStats[0], &numCores)); err != errCPUSuccess {
+	var cNumCPUs C.int = C.int(numCPUs)
+	if err := int(C.get_cpu_core_stats(&coreStats[0], &cNumCPUs)); err != errCPUSuccess {
 		return nil, cpuError(err)
 	}
 
 	// Convert core stats to usage percentages
 	coreUsage := make([]float64, numCPUs)
 	for i := 0; i < numCPUs; i++ {
-		// Calculate active time percentage (user + system + nice)
-		coreUsage[i] = float64(coreStats[i].user + coreStats[i].system + coreStats[i].nice)
+		// Calculate total ticks for this core
+		total := float64(coreStats[i].user + coreStats[i].system + coreStats[i].idle + coreStats[i].nice)
+		if total > 0 {
+			// Calculate active time percentage
+			active := float64(coreStats[i].user + coreStats[i].system + coreStats[i].nice)
+			coreUsage[i] = (active / total) * maxCPUPercentage
+		}
 	}
 
-	// Calculate total CPU usage as average of core usages
-	var totalUsage float64
-	for _, usage := range coreUsage {
-		totalUsage += usage
-	}
-	totalUsage /= float64(numCPUs)
+	// Calculate total CPU usage from the total stats
+	totalUsage := maxCPUPercentage - float64(cStats.idle)
 
 	// Get platform info
 	var platform C.cpu_platform_t
@@ -92,7 +106,7 @@ func getStats() (*types.CPUStats, error) {
 		return nil, cpuError(err)
 	}
 
-	// Get frequencies
+	// Get frequency info
 	perfFreq := uint64(C.get_perf_core_freq())
 	effiFreq := uint64(C.get_effi_core_freq())
 	baseFreq := perfFreq
@@ -108,6 +122,7 @@ func getStats() (*types.CPUStats, error) {
 		totalCores = numCPUs
 	}
 
+	// Get load averages
 	var loadAvg [3]float64
 	if err := int(C.get_load_avg((*C.double)(&loadAvg[0]))); err != errCPUSuccess {
 		return nil, cpuError(err)
@@ -118,14 +133,14 @@ func getStats() (*types.CPUStats, error) {
 		System:           float64(cStats.system),
 		Idle:             float64(cStats.idle),
 		Nice:             float64(cStats.nice),
+		CoreUsage:        coreUsage,
+		TotalUsage:       totalUsage,
 		FrequencyMHz:     baseFreq,
 		PerfFrequencyMHz: perfFreq,
 		EffiFrequencyMHz: effiFreq,
 		PhysicalCores:    totalCores,
 		PerformanceCores: perfCores,
 		EfficiencyCores:  effiCores,
-		CoreUsage:        coreUsage,
-		TotalUsage:       totalUsage,
 		LoadAvg:          loadAvg,
 		Timestamp:        time.Now(),
 	}, nil

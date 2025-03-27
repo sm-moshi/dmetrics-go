@@ -83,7 +83,7 @@ bool get_power_source_info(power_stats_t *stats) {
   if (!stats)
     return false;
 
-  // Initialize with defaults
+  // Initialise with defaults
   stats->is_present = false;
   stats->is_charging = false;
   stats->percentage = 0.0;

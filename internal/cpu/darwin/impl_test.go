@@ -210,7 +210,7 @@ func TestCPUCoreUsage(t *testing.T) {
 			avgCoreUsage, stats.TotalUsage)
 	}
 
-	// Verify core type counts for Apple Silicon
+	// Verify core type counts for Apple Silicon.
 	if stats.PerformanceCores > 0 || stats.EfficiencyCores > 0 {
 		if stats.PerformanceCores+stats.EfficiencyCores != stats.PhysicalCores {
 			t.Errorf("P-cores (%d) + E-cores (%d) != Physical cores (%d)",
@@ -219,7 +219,7 @@ func TestCPUCoreUsage(t *testing.T) {
 	}
 }
 
-// Helper function for absolute value
+// Helper function for absolute value.
 func abs(x float64) float64 {
 	if x < 0 {
 		return -x

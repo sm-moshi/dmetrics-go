@@ -26,7 +26,7 @@ func TestPowerMetricsIntegration(t *testing.T) {
 		ch, err := provider.Watch(ctx, time.Second)
 		require.NoError(t, err)
 
-		var readings []types.PowerStats
+		var readings []*types.PowerStats
 		for reading := range ch {
 			readings = append(readings, reading)
 		}

@@ -4,6 +4,29 @@
 // Package darwin provides Darwin-specific CPU metrics implementation.
 package darwin
 
+/*
+#cgo CFLAGS: -x objective-c -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include
+#cgo LDFLAGS: -F/System/Library/Frameworks -framework CoreFoundation
+
+#include "cpu.h"
+#include <stdlib.h>
+
+// Forward declarations of functions used in Go
+int get_cpu_count(void);
+uint64_t get_cpu_freq(void);
+uint64_t get_perf_core_freq(void);
+uint64_t get_effi_core_freq(void);
+int get_perf_core_count(void);
+int get_effi_core_count(void);
+int get_cpu_stats(cpu_stats_t *stats);
+int get_cpu_platform(cpu_platform_t *platform);
+int get_load_avg(double loadavg[3]);
+void init_cpu_stats(void);
+void cleanup_cpu_stats(void);
+int get_cpu_core_stats(cpu_core_stats_t *stats, int *num_cores);
+*/
+import "C"
+
 import (
 	"context"
 	"time"
@@ -12,12 +35,6 @@ import (
 	"github.com/sm-moshi/dmetrics-go/api/metrics"
 	"github.com/sm-moshi/dmetrics-go/pkg/metrics/types"
 )
-
-/*
-#include "cpu.h"
-#include <stdlib.h>
-*/
-import "C"
 
 const (
 	brandStringLength = 128 // Length of the CPU brand string buffer
@@ -43,7 +60,7 @@ func NewProvider() *Provider {
 }
 
 // GetStats returns current CPU statistics.
-func (p *Provider) GetStats() (*types.CPUStats, error) {
+func (p *Provider) GetStats(context.Context) (*types.CPUStats, error) {
 	stats, err := getStats()
 	if err != nil {
 		return nil, err
@@ -146,6 +163,62 @@ func (p *Provider) GetPlatform() (*types.CPUPlatform, error) {
 	}, nil
 }
 
+// validateWatchParams validates the interval parameter for Watch.
+func (p *Provider) validateWatchParams(interval time.Duration) error {
+	if interval <= 0 {
+		return types.ErrInvalidInterval
+	}
+	return nil
+}
+
+// createStatsChannel creates a buffered channel for CPU stats.
+func (p *Provider) createStatsChannel() chan *types.CPUStats {
+	return make(chan *types.CPUStats, 1)
+}
+
+// sendStatsWithDropping sends stats to the channel, dropping old values if needed.
+func (p *Provider) sendStatsWithDropping(ch chan *types.CPUStats, stats *types.CPUStats) {
+	select {
+	case ch <- stats:
+		return
+	default:
+		// Channel is full, drop old value and send new
+		select {
+		case <-ch:
+		default:
+		}
+		// Try to send again
+		select {
+		case ch <- stats:
+		default:
+		}
+	}
+}
+
+// collectAndSendStats collects CPU stats and sends them to the channel.
+func (p *Provider) collectAndSendStats(ctx context.Context, ch chan *types.CPUStats) {
+	stats, err := p.GetStats(ctx)
+	if err != nil {
+		return // Error is already logged in GetStats
+	}
+	p.sendStatsWithDropping(ch, stats)
+}
+
+// runWatchLoop runs the main monitoring loop.
+func (p *Provider) runWatchLoop(ctx context.Context, interval time.Duration, ch chan *types.CPUStats) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			p.collectAndSendStats(ctx, ch)
+		}
+	}
+}
+
 // Watch monitors CPU statistics and sends updates through the returned channel.
 // The interval parameter determines how often updates are sent.
 // The context can be used to stop monitoring. When the context is cancelled,
@@ -159,46 +232,14 @@ func (p *Provider) GetPlatform() (*types.CPUPlatform, error) {
 // channel will be closed. The caller should always ensure proper cleanup by
 // cancelling the context when monitoring is no longer needed.
 func (p *Provider) Watch(ctx context.Context, interval time.Duration) (<-chan *types.CPUStats, error) {
-	if interval <= 0 {
-		return nil, types.ErrInvalidInterval
+	if err := p.validateWatchParams(interval); err != nil {
+		return nil, err
 	}
 
-	// Buffer size of 1 to prevent blocking on slow consumers
-	ch := make(chan *types.CPUStats, 1)
-
+	ch := p.createStatsChannel()
 	go func() {
 		defer close(ch)
-
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				stats, err := p.GetStats()
-				if err != nil {
-					// Log error if needed but continue monitoring
-					continue
-				}
-
-				// Try to send stats, drop if channel is full
-				select {
-				case ch <- stats:
-				default:
-					// Channel is full, drop old value and send new
-					select {
-					case <-ch: // Drain one value
-					default:
-					}
-					select {
-					case ch <- stats:
-					default:
-					}
-				}
-			}
-		}
+		p.runWatchLoop(ctx, interval, ch)
 	}()
 
 	return ch, nil

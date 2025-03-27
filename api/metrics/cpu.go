@@ -127,7 +127,7 @@ type CPUMetrics interface {
 	//   - CPU statistics including usage, frequency, and core information
 	//   - ErrHardwareAccess if the statistics cannot be collected
 	//   - ErrShutdown if the provider has been shut down
-	GetStats() (*types.CPUStats, error)
+	GetStats(ctx context.Context) (*types.CPUStats, error)
 
 	// GetPlatform returns information about the CPU platform.
 	// Returns:

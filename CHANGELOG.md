@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Context-aware cancellation support
   - Thread-safe concurrent access
   - Performance characterisation documentation
+  - Comprehensive package documentation
+  - Improved error handling in Watch function
+  - Reduced cognitive complexity in core functions
 
 ### Changed
 
@@ -25,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optimised error handling with proper propagation
 - Fixed CPU utilisation calculation
 - Restructured test organisation
+- Refactored Watch function for better maintainability
+- Enhanced documentation with British English conventions
+- Improved shutdown error handling in tests
 
 ### Fixed
 
@@ -33,10 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Memory leaks in C implementation
 - Variable shadowing in tests
 - Thread safety in provider implementation
+- Unchecked errors in test shutdown
+- High cognitive complexity in Watch function
 
 ### Known Issues
 
-- CPU frequency detection returns 0 (deferred to post-v0.1)
 - Some integration tests need complexity optimisation
 
 ### Technical Details
@@ -54,7 +61,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Pending
 
-- CPU frequency detection improvements
 - Integration test optimisation
 
 <!-- markdownlint-configure-file

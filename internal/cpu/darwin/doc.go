@@ -40,17 +40,24 @@ This behaviour allows applications to handle missing frequency data gracefully.
 Example usage:
 
 	provider := cpu.NewProvider()
-	defer provider.Shutdown()
+	defer func() {
+		if err := provider.Shutdown(); err != nil {
+			log.Printf("error during shutdown: %v", err)
+		}
+	}()
 
 	// Get current CPU stats
-	stats, err := provider.GetStats()
+	stats, err := provider.GetStats(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("CPU Usage: %.2f%%\n", stats.TotalUsage)
 
 	// Monitor CPU metrics
-	ch, err := provider.Watch(time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ch, err := provider.Watch(ctx, time.Second)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -63,12 +70,22 @@ All functions are designed to be thread-safe and can be called concurrently.
 The implementation uses mutexes to protect shared resources and ensures proper
 cleanup through the Shutdown method.
 
+Watch Implementation:
+The Watch function is implemented with several components for maintainability and reliability:
+  - Input validation ensures proper interval values
+  - Buffered channel (size 1) prevents blocking on slow consumers
+  - Automatic old value dropping when channel is full
+  - Clean shutdown through context cancellation
+  - Proper resource cleanup with deferred operations
+  - Thread-safe stats collection and sending
+
 Resource Management:
 The package implements proper resource management:
   - Automatic cleanup of system resources
   - Memory leak prevention in C code
   - Proper handling of host_processor_info data
   - Thread-safe access to shared state
+  - Graceful shutdown with error handling
 */
 package darwin
 
@@ -95,17 +112,20 @@ package darwin
 // - Updates every interval (minimum 100ms recommended)
 // - Memory: ~8KB fixed + ~4KB per core
 // - One active Watch call at a time recommended
+// - Efficient value dropping for slow consumers
+// - Clean shutdown through context cancellation
 //
 // Resource Usage:
 // - No background goroutines when idle
 // - Minimal syscall overhead
 // - Automatic cleanup on shutdown
+// - Proper error handling in cleanup paths
 //
 // Version Information
 const (
-	// Version represents the current package version
+	// Version represents the current package version.
 	Version = "v0.1.0"
 
-	// MinimumDarwinVersion is the minimum supported Darwin version
+	// MinimumDarwinVersion is the minimum supported Darwin version.
 	MinimumDarwinVersion = "10.15.0"
 )

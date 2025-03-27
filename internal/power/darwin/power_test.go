@@ -127,7 +127,7 @@ func TestWatch(t *testing.T) {
 	ch, err := provider.Watch(ctx, 500*time.Millisecond)
 	require.NoError(t, err)
 
-	var stats types.PowerStats
+	var stats *types.PowerStats
 	select {
 	case stats = <-ch:
 		assert.NotZero(t, stats.Timestamp)

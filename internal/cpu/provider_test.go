@@ -43,7 +43,7 @@ func TestProviderCoreCount(t *testing.T) {
 func TestProviderStats(t *testing.T) {
 	provider := cpu.NewProvider()
 
-	stats, err := provider.GetStats()
+	stats, err := provider.GetStats(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, stats)
 
@@ -75,7 +75,11 @@ func TestProviderStats(t *testing.T) {
 
 func TestProviderWatch(t *testing.T) {
 	provider := cpu.NewProvider()
-	defer provider.Shutdown()
+	defer func() {
+		if err := provider.Shutdown(); err != nil {
+			t.Errorf("failed to shutdown provider: %v", err)
+		}
+	}()
 
 	// Create a context with timeout to ensure test completion
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

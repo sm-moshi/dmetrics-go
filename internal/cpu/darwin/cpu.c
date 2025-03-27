@@ -169,12 +169,12 @@ int get_cpu_stats(cpu_stats_t *stats) {
     return CPU_ERROR_MUTEX;
   }
 
-  DEBUG_LOG("Collecting CPU stats");
   processor_info_array_t info_array;
   mach_msg_type_number_t info_count;
+  natural_t cpu_count;
 
   kern_return_t error =
-      host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &num_cpus,
+      host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &cpu_count,
                           &info_array, &info_count);
 
   if (error != KERN_SUCCESS) {
@@ -190,16 +190,20 @@ int get_cpu_stats(cpu_stats_t *stats) {
   if (!prev_info_array) {
     prev_info_array = info_array;
     prev_info_count = info_count;
+    num_cpus = cpu_count;
     pthread_mutex_unlock(&cpu_mutex);
     usleep(500000); // 500ms for better sampling
-    return get_cpu_stats(stats);
+    return CPU_ERROR_NEED_SECOND_SAMPLE;
   }
 
   processor_cpu_load_info_t prev_cpu_load =
       (processor_cpu_load_info_t)prev_info_array;
 
-  // Calculate per-core deltas
-  for (natural_t i = 0; i < num_cpus; i++) {
+  // Calculate total ticks across all cores
+  unsigned long long total_user = 0, total_system = 0, total_idle = 0,
+                     total_nice = 0;
+
+  for (natural_t i = 0; i < cpu_count; i++) {
     unsigned long long user = cpu_load_info[i].cpu_ticks[CPU_STATE_USER] -
                               prev_cpu_load[i].cpu_ticks[CPU_STATE_USER];
     unsigned long long system = cpu_load_info[i].cpu_ticks[CPU_STATE_SYSTEM] -
@@ -209,28 +213,34 @@ int get_cpu_stats(cpu_stats_t *stats) {
     unsigned long long nice = cpu_load_info[i].cpu_ticks[CPU_STATE_NICE] -
                               prev_cpu_load[i].cpu_ticks[CPU_STATE_NICE];
 
-    unsigned long long total = user + system + idle + nice;
-    if (total > 0) {
-      stats[i].user = (double)user / total * 100.0;
-      stats[i].system = (double)system / total * 100.0;
-      stats[i].idle = (double)idle / total * 100.0;
-      stats[i].nice = (double)nice / total * 100.0;
-    }
+    total_user += user;
+    total_system += system;
+    total_idle += idle;
+    total_nice += nice;
   }
 
-  // Clean up and store current data for next time
+  // Calculate total ticks and percentages
+  unsigned long long total =
+      total_user + total_system + total_idle + total_nice;
+
+  if (total > 0) {
+    stats->user = (double)total_user * 100.0 / total;
+    stats->system = (double)total_system * 100.0 / total;
+    stats->idle = (double)total_idle * 100.0 / total;
+    stats->nice = (double)total_nice * 100.0 / total;
+  } else {
+    stats->user = stats->system = stats->nice = 0.0;
+    stats->idle = 100.0;
+  }
+
+  // Clean up previous info and store current
   vm_deallocate(mach_task_self(), (vm_address_t)prev_info_array,
-                prev_info_count);
+                prev_info_count * sizeof(natural_t));
   prev_info_array = info_array;
   prev_info_count = info_count;
+  num_cpus = cpu_count;
 
-  ret = pthread_mutex_unlock(&cpu_mutex);
-  if (ret != 0) {
-    ERROR_LOG("Failed to release mutex: %s", strerror(ret));
-    return CPU_ERROR_MUTEX;
-  }
-
-  DEBUG_LOG("CPU stats collection completed successfully");
+  pthread_mutex_unlock(&cpu_mutex);
   return CPU_SUCCESS;
 }
 
@@ -308,7 +318,7 @@ int get_cpu_core_stats(cpu_core_stats_t *stats, int *num_cores) {
     prev_info_array = info_array;
     prev_info_count = info_count;
     pthread_mutex_unlock(&cpu_mutex);
-    usleep(500000); // 500ms for better sampling
+    usleep(500000); // 500ms delay for initial sampling
     return get_cpu_core_stats(stats, num_cores);
   }
 

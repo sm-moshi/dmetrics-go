@@ -52,18 +52,13 @@
   - Benchmark suite
   - Race condition tests
 
-### In Progress 🚧
+- [x] Fix CPU frequency detection
+  - Implemented multi-stage detection strategy
+  - Added support for both architectures
+  - Improved error handling and permissions
+  - Added fallback mechanisms
 
-- [ ] Fix CPU frequency detection
-  - Current Status: Returns 0 for all cores
-  - Investigation Areas:
-    - sysctl calls on Intel processors
-    - IOKit API usage for Apple Silicon
-    - Frequency scaling support
-  - Acceptance Criteria:
-    - Accurate base frequency reporting
-    - Dynamic frequency updates
-    - Support for both architectures
+### In Progress 🚧
 
 - [ ] Optimise integration test complexity
   - Current Issues:

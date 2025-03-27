@@ -52,6 +52,18 @@ func (p *Provider) GetBatteryPercentage(ctx context.Context) (float64, error) {
 	return getBatteryPercentage()
 }
 
+// GetBatteryPresent returns whether a battery is present in the system.
+func (p *Provider) GetBatteryPresent(context.Context) (bool, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	stats, err := getStats()
+	if err != nil {
+		return false, err
+	}
+	return stats.IsPresent, nil
+}
+
 // GetBatteryState returns the current battery charging state.
 func (p *Provider) GetBatteryState(ctx context.Context) (types.BatteryState, error) {
 	if ctx.Err() != nil {
@@ -92,15 +104,33 @@ func (p *Provider) GetPowerConsumption(ctx context.Context) (float64, error) {
 	return getPowerConsumption()
 }
 
+// GetBatteryCharging returns whether the battery is currently charging.
+func (p *Provider) GetBatteryCharging(ctx context.Context) (bool, error) {
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	stats, err := getStats()
+	if err != nil {
+		return false, err
+	}
+	if !stats.IsPresent {
+		return false, types.ErrNoBattery
+	}
+	return stats.State == types.BatteryStateCharging, nil
+}
+
 // Watch monitors power metrics and sends updates through the returned channel.
 // The interval parameter determines how often updates are sent.
 // The returned channel will be closed when the context is cancelled or an error occurs.
-func (p *Provider) Watch(ctx context.Context, interval time.Duration) (<-chan types.PowerStats, error) {
+func (p *Provider) Watch(ctx context.Context, interval time.Duration) (<-chan *types.PowerStats, error) {
 	if interval <= 0 {
 		return nil, types.ErrInvalidInterval
 	}
 
-	ch := make(chan types.PowerStats)
+	ch := make(chan *types.PowerStats)
 
 	go func() {
 		defer close(ch)
@@ -121,7 +151,7 @@ func (p *Provider) Watch(ctx context.Context, interval time.Duration) (<-chan ty
 
 				// Try to send stats, but respect context cancellation
 				select {
-				case ch <- *stats:
+				case ch <- stats:
 				case <-ctx.Done():
 					return
 				}

@@ -103,7 +103,7 @@ func run() error {
 	defer provider.Shutdown()
 
 	// Initial check to ensure we can get stats
-	stats, err := provider.GetStats()
+	stats, err := provider.GetStats(context.Background())
 	if err != nil {
 		return fmt.Errorf("initial stats check failed: %w", err)
 	}

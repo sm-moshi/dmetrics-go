@@ -11,7 +11,8 @@
 #define CPU_ERROR_MEMORY -1
 #define CPU_ERROR_SYSCTL -2
 #define CPU_ERROR_HOST_PROCESSOR_INFO -3
-#define CPU_ERROR_MUTEX -4 // Added for mutex operation failures
+#define CPU_ERROR_MUTEX -4
+#define CPU_ERROR_NEED_SECOND_SAMPLE -5 // Added for initial sample collection
 
 // CPU statistics structure
 typedef struct {
