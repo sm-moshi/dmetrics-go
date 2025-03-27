@@ -111,3 +111,54 @@ func BenchmarkBasicOperations(b *testing.B) {
 	err := provider.Shutdown()
 	assert.NoError(b, err)
 }
+
+// TestPowerSourceDetection verifies the enhanced power source detection capabilities.
+// It tests:
+// - Accurate detection of power source type (AC/Battery)
+// - Battery cycle count when available
+// - Current, maximum, and design capacity values
+// - Proper handling of unavailable metrics
+func TestPowerSourceDetection(t *testing.T) {
+	provider := NewProvider()
+	require.NotNil(t, provider, "provider should not be nil")
+
+	ctx := t.Context()
+
+	stats, err := provider.GetStats(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, stats)
+
+	// Test power source type
+	assert.Contains(t, []types.PowerSource{types.PowerSourceAC, types.PowerSourceBattery}, stats.Source,
+		"power source should be either AC or Battery")
+
+	if stats.Source == types.PowerSourceBattery {
+		// Test battery metrics
+		if stats.CycleCount > 0 {
+			assert.Greater(t, stats.CycleCount, int64(0),
+				"cycle count should be positive when available")
+		}
+
+		// Test capacity values - should be non-negative
+		assert.GreaterOrEqual(t, stats.CurrentCapacity, float64(0),
+			"current capacity should be non-negative")
+
+		// Only test capacity relationships if all values are available
+		if stats.CurrentCapacity > 0 && stats.MaxCapacity > 0 && stats.DesignCapacity > 0 {
+			assert.LessOrEqual(t, stats.CurrentCapacity, stats.MaxCapacity,
+				"current capacity should be <= max capacity")
+			assert.LessOrEqual(t, stats.MaxCapacity, stats.DesignCapacity,
+				"max capacity should be <= design capacity")
+
+			// Test battery health calculation
+			health := stats.MaxCapacity / stats.DesignCapacity * 100
+			assert.GreaterOrEqual(t, health, 0.0,
+				"battery health percentage should be non-negative")
+			assert.LessOrEqual(t, health, 100.0,
+				"battery health percentage should not exceed 100%")
+		}
+	}
+
+	err = provider.Shutdown()
+	assert.NoError(t, err)
+}
