@@ -97,8 +97,12 @@ func getStats() (*types.CPUStats, error) {
 		}
 	}
 
-	// Calculate total CPU usage from the total stats
-	totalUsage := maxCPUPercentage - float64(cStats.idle)
+	// Calculate total CPU usage as average of core usages
+	var totalUsage float64
+	for _, usage := range coreUsage {
+		totalUsage += usage
+	}
+	totalUsage = totalUsage / float64(numCPUs)
 
 	// Get platform info
 	var platform C.cpu_platform_t

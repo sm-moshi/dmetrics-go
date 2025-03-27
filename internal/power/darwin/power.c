@@ -83,10 +83,21 @@ bool get_power_source_info(power_stats_t *stats) {
   if (!stats)
     return false;
 
+  // Initialize power source keys
+  if (!init_power_source_keys())
+    return false;
+
   // Initialise with defaults
   stats->is_present = false;
   stats->is_charging = false;
+  stats->is_charged = false;
+  stats->is_ac_present = false;
   stats->percentage = 0.0;
+  stats->time_remaining = 0.0;
+  stats->cycle_count = 0;
+  stats->current_capacity = 0.0;
+  stats->max_capacity = 0.0;
+  stats->design_capacity = 0.0;
 
   // Get power source information
   CFTypeRef powerInfo = IOPSCopyPowerSourcesInfo();
@@ -120,14 +131,10 @@ bool get_power_source_info(power_stats_t *stats) {
             CFDictionaryGetValue(powerSource, CFSTR(kIOPSIsChargedKey));
 
         if (powerState) {
-          // Check if we're on AC power and either charging or fully charged
-          bool onAC = CFEqual(powerState, CFSTR(kIOPSACPowerValue));
-          bool charging = (isCharging == kCFBooleanTrue);
-          bool fullyCharged = (isFinishCharging == kCFBooleanTrue);
-
-          // Update charging state - we're charging if on AC and either actively
-          // charging or fully charged
-          stats->is_charging = onAC && (charging || fullyCharged);
+          // Check if we're on AC power
+          stats->is_ac_present = CFEqual(powerState, CFSTR(kIOPSACPowerValue));
+          stats->is_charging = (isCharging == kCFBooleanTrue);
+          stats->is_charged = (isFinishCharging == kCFBooleanTrue);
         }
 
         // Get current capacity percentage
@@ -137,6 +144,61 @@ bool get_power_source_info(power_stats_t *stats) {
           int value;
           if (CFNumberGetValue(currentCapacity, kCFNumberIntType, &value)) {
             stats->percentage = (double)value;
+          }
+        }
+
+        // Get time remaining
+        CFNumberRef timeRemaining =
+            CFDictionaryGetValue(powerSource, CFSTR(kIOPSTimeToEmptyKey));
+        CFNumberRef timeToCharge =
+            CFDictionaryGetValue(powerSource, CFSTR(kIOPSTimeToFullChargeKey));
+        if (timeRemaining && !stats->is_charging) {
+          int minutes;
+          if (CFNumberGetValue(timeRemaining, kCFNumberIntType, &minutes)) {
+            stats->time_remaining = (double)minutes;
+          }
+        } else if (timeToCharge && stats->is_charging) {
+          int minutes;
+          if (CFNumberGetValue(timeToCharge, kCFNumberIntType, &minutes)) {
+            stats->time_remaining =
+                -(double)minutes; // Negative indicates charging time
+          }
+        }
+
+        // Get cycle count
+        CFNumberRef cycleCount =
+            CFDictionaryGetValue(powerSource, kPowerSourceCycleCountKey);
+        if (cycleCount) {
+          int cycles;
+          if (CFNumberGetValue(cycleCount, kCFNumberIntType, &cycles)) {
+            stats->cycle_count = cycles;
+          }
+        }
+
+        // Get capacity information
+        CFNumberRef currentCap =
+            CFDictionaryGetValue(powerSource, CFSTR(kIOPSCurrentCapacityKey));
+        CFNumberRef maxCap =
+            CFDictionaryGetValue(powerSource, CFSTR(kIOPSMaxCapacityKey));
+        CFNumberRef designCap =
+            CFDictionaryGetValue(powerSource, CFSTR(kIOPSDesignCapacityKey));
+
+        if (currentCap) {
+          int value;
+          if (CFNumberGetValue(currentCap, kCFNumberIntType, &value)) {
+            stats->current_capacity = (double)value;
+          }
+        }
+        if (maxCap) {
+          int value;
+          if (CFNumberGetValue(maxCap, kCFNumberIntType, &value)) {
+            stats->max_capacity = (double)value;
+          }
+        }
+        if (designCap) {
+          int value;
+          if (CFNumberGetValue(designCap, kCFNumberIntType, &value)) {
+            stats->design_capacity = (double)value;
           }
         }
       }

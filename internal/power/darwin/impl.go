@@ -36,42 +36,81 @@ func getStats() (*types.PowerStats, error) {
 	}
 
 	stats := &types.PowerStats{
-		IsPresent:  bool(cStats.is_present),
-		Percentage: float64(cStats.percentage),
-		Timestamp:  time.Now(),
-		Health:     types.BatteryHealthUnknown, // Health calculation requires more data
+		IsPresent:       bool(cStats.is_present),
+		Percentage:      float64(cStats.percentage),
+		State:           determineBatteryState(cStats),
+		Source:          determinePowerSource(cStats),
+		Timestamp:       time.Now(),
+		TimeRemaining:   determineTimeRemaining(cStats),
+		CycleCount:      int(cStats.cycle_count),
+		CurrentCapacity: float64(cStats.current_capacity),
+		MaxCapacity:     float64(cStats.max_capacity),
+		DesignCapacity:  float64(cStats.design_capacity),
+		Health:          determineBatteryHealth(cStats),
 	}
-
-	// Set battery state and power source
-	if bool(cStats.is_charging) {
-		stats.State = types.BatteryStateCharging
-		stats.Source = types.PowerSourceAC
-	} else if bool(cStats.is_present) {
-		stats.State = types.BatteryStateDischarging
-		stats.Source = types.PowerSourceBattery
-	} else {
-		stats.State = types.BatteryStateUnknown
-		stats.Source = types.PowerSourceAC
-	}
-
-	// Initialize other fields with zero values
-	// These will be implemented in future versions
-	stats.TimeRemaining = 0
-	stats.TimeToFull = 0
-	stats.CycleCount = 0
-	stats.Temperature = 0
-	stats.Voltage = 0
-	stats.Amperage = 0
-	stats.Power = 0
-	stats.DesignCapacity = 0
-	stats.MaxCapacity = 0
-	stats.CurrentCapacity = 0
-	stats.DesignCycles = 0
-	stats.CPUPower = 0
-	stats.GPUPower = 0
-	stats.TotalPower = 0
 
 	return stats, nil
+}
+
+// determineBatteryState determines the battery state based on power source info
+func determineBatteryState(stats C.power_stats_t) types.BatteryState {
+	if !bool(stats.is_present) {
+		return types.BatteryStateUnknown
+	}
+	if bool(stats.is_charged) {
+		return types.BatteryStateFull
+	}
+	if bool(stats.is_charging) {
+		return types.BatteryStateCharging
+	}
+	if bool(stats.is_ac_present) {
+		return types.BatteryStateNotCharging
+	}
+	return types.BatteryStateDischarging
+}
+
+// determinePowerSource determines the current power source
+func determinePowerSource(stats C.power_stats_t) types.PowerSource {
+	if bool(stats.is_ac_present) {
+		return types.PowerSourceAC
+	}
+	if bool(stats.is_present) {
+		return types.PowerSourceBattery
+	}
+	return types.PowerSourceUnknown
+}
+
+// determineTimeRemaining converts the time remaining value
+func determineTimeRemaining(stats C.power_stats_t) time.Duration {
+	// Negative values indicate charging time
+	minutes := float64(stats.time_remaining)
+	return time.Duration(minutes) * time.Minute
+}
+
+// determineBatteryHealth calculates battery health based on capacity values
+func determineBatteryHealth(stats C.power_stats_t) types.BatteryHealth {
+	if !bool(stats.is_present) {
+		return types.BatteryHealthUnknown
+	}
+
+	// Calculate health percentage based on current max capacity vs design capacity
+	maxCapacity := float64(stats.max_capacity)
+	designCapacity := float64(stats.design_capacity)
+
+	if maxCapacity <= 0 || designCapacity <= 0 {
+		return types.BatteryHealthUnknown
+	}
+
+	healthPercent := (maxCapacity / designCapacity) * batteryHealthPercentMultiplier
+
+	switch {
+	case healthPercent >= batteryHealthGoodThreshold:
+		return types.BatteryHealthGood
+	case healthPercent >= batteryHealthFairThreshold:
+		return types.BatteryHealthFair
+	default:
+		return types.BatteryHealthPoor
+	}
 }
 
 // Helper functions that use getStats().
@@ -110,7 +149,11 @@ func getBatteryHealth() (types.BatteryHealth, error) {
 	if !stats.IsPresent {
 		return types.BatteryHealthUnknown, types.ErrNoBattery
 	}
-	return types.BatteryHealthUnknown, nil // Health calculation requires more data for v0.1
+	return determineBatteryHealth(C.power_stats_t{
+		is_present:      C._Bool(stats.IsPresent),
+		max_capacity:    C.double(stats.MaxCapacity),
+		design_capacity: C.double(stats.DesignCapacity),
+	}), nil
 }
 
 func getTimeRemaining() (time.Duration, error) {

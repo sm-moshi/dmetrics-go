@@ -33,9 +33,17 @@
  * the most commonly needed power metrics.
  */
 typedef struct {
-  bool is_present;   /**< Whether a battery is present */
-  bool is_charging;  /**< Whether the battery is currently charging */
-  double percentage; /**< Battery charge percentage (0-100) */
+  bool is_present;    /**< Whether a battery is present */
+  bool is_charging;   /**< Whether the battery is currently charging */
+  bool is_charged;    /**< Whether the battery is fully charged */
+  bool is_ac_present; /**< Whether AC power is connected */
+  double percentage;  /**< Battery charge percentage (0-100) */
+  double
+      time_remaining; /**< Time remaining in minutes (negative when charging) */
+  int cycle_count;    /**< Battery cycle count */
+  double current_capacity; /**< Current capacity in mAh */
+  double max_capacity;     /**< Maximum capacity in mAh */
+  double design_capacity;  /**< Design capacity in mAh */
 } power_stats_t;
 
 /**

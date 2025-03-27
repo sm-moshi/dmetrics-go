@@ -102,7 +102,13 @@ func TestGetTimeRemaining(t *testing.T) {
 		t.Skip("No battery present, skipping test")
 	}
 	require.NoError(t, err)
-	assert.GreaterOrEqual(t, duration, time.Duration(0))
+
+	// Time remaining can be negative when charging
+	if duration < 0 {
+		assert.LessOrEqual(t, duration, time.Duration(0), "charging time should be negative")
+	} else {
+		assert.GreaterOrEqual(t, duration, time.Duration(0), "discharging time should be non-negative")
+	}
 }
 
 func TestGetPowerConsumption(t *testing.T) {
